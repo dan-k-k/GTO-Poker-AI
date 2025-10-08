@@ -4,7 +4,7 @@ This project is a Python-based implementation of a Texas Hold'em poker bot that 
 
 The agent learns by playing against itself, using a combination of Reinforcement Learning (for finding the best response) and Supervised Learning (for building an average strategy).
 
-The agent intelligently predicts its opponent's range by using their trained network to find the probability of holding random hands (Monte Carlo) for their most recent play given the action throughout the hand, with the final equity being a weighted average of the showdown outcomes (win/loss/tie). e.g. if the opponent may only bluff via triple barrel, our equity on the river increases for this specific scenario. As agents continue to play, these learned traits do not last in the extremes. In deployment, the agent can then use its own network to predict what it'd have done as its own opponent.
+The agent intelligently predicts its opponent's range by using its opponent's trained network to find the probability of holding random hands (Monte Carlo) for their most recent play given the action throughout the hand, with the final equity being a weighted average of the showdown outcomes (win/loss/tie). e.g. if the opponent may only bluff via triple barrel, our equity on the river increases for this specific scenario. As agents continue to play, these learned traits do not last in the extremes. In deployment, the agent can then use its own network to predict what it'd have done as its own opponent.
 
 
 ![Poker Live Demo](images/Pokerexamplelog2.gif)
