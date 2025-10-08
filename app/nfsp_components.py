@@ -302,7 +302,7 @@ class NFSPAgent(NeuralNetworkAgent):
         return None
 
     def _calculate_intelligent_equity(self, my_hole_cards, community_cards, historical_context=None) -> float:
-        """
+        """ 
         Calculates Monte Carlo equity using batched neural network predictions for efficiency.
         """
         # Use the value stored from the config file
