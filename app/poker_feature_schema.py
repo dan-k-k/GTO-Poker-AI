@@ -98,24 +98,161 @@ class PokerFeatureSchema:
     flop_betting: BettingRoundFeatures = field(default_factory=BettingRoundFeatures)
     turn_betting: BettingRoundFeatures = field(default_factory=BettingRoundFeatures)
 
-    def to_vector(self) -> np.ndarray:
-        """Flattens the entire nested schema into a 1D NumPy array using recursion."""
-        vector_parts = []
-        self._flatten_recursively(self, vector_parts)
-        return np.array(vector_parts, dtype=np.float32)
-
-    def _flatten_recursively(self, item, vector_parts):
-        """Helper method to recursively flatten nested dataclasses."""
-        if hasattr(item, '__dataclass_fields__'):
-            for field_info in fields(item):
-                value = getattr(item, field_info.name)
-                self._flatten_recursively(value, vector_parts)
-        else:
-            vector_parts.append(item)
-
     @staticmethod
     def get_vector_size() -> int:
         """Dynamically calculates the total size of the feature vector."""
         # Create a default instance and get the length of its vector form
         return len(PokerFeatureSchema().to_vector())
     
+# -------------------------------------------------------------------------
+
+    # Ugly but fast. 126 features 08/10/2025
+    def to_vector(self) -> np.ndarray:
+        """Flattens the entire nested schema into a 1D NumPy array directly."""
+        vector_parts = [
+            # HandFeatures
+            self.hand.is_button,
+            self.hand.is_pair,
+            self.hand.is_suited,
+            self.hand.high_card_rank,
+            self.hand.low_card_rank,
+
+            # DynamicFeatures
+            self.dynamic.hand_strength,
+            self.dynamic.my_stack_bb,
+            self.dynamic.opp_stack_bb,
+            self.dynamic.pot_bb,
+            self.dynamic.effective_stack_bb,
+            self.dynamic.pot_odds,
+            self.dynamic.bet_faced_ratio,
+            self.dynamic.spr,
+            self.dynamic.player_has_initiative,
+            self.dynamic.current_betting_round.my_bets_opened,
+            self.dynamic.current_betting_round.my_raises_made,
+            self.dynamic.current_betting_round.opp_bets_opened,
+            self.dynamic.current_betting_round.opp_raises_made,
+            self.dynamic.current_betting_round.actions_on_street,
+
+            # Preflop Cards (StreetFeatures)
+            self.preflop_cards.random_strength,
+            self.preflop_cards.made_hand_rank_pair,
+            self.preflop_cards.made_hand_rank_twopair,
+            self.preflop_cards.made_hand_rank_trips,
+            self.preflop_cards.made_hand_rank_straight,
+            self.preflop_cards.made_hand_rank_flush,
+            self.preflop_cards.made_hand_rank_fullhouse,
+            self.preflop_cards.board_made_rank_pair,
+            self.preflop_cards.board_made_rank_twopair,
+            self.preflop_cards.board_made_rank_trips,
+            self.preflop_cards.board_made_rank_straight,
+            self.preflop_cards.board_made_rank_flush,
+            self.preflop_cards.board_made_rank_fullhouse,
+            self.preflop_cards.is_3card_flush_draw_board,
+            self.preflop_cards.is_4card_flush_draw_board,
+            self.preflop_cards.is_3card_straight_draw_board,
+            self.preflop_cards.is_4card_straight_draw_board,
+            self.preflop_cards.has_3card_flush_draw,
+            self.preflop_cards.has_4card_flush_draw,
+            self.preflop_cards.has_3card_straight_draw,
+            self.preflop_cards.has_4card_straight_draw,
+            self.preflop_cards.has_flush_blocker,
+            self.preflop_cards.straight_blocker_value,
+
+            # Flop Cards (StreetFeatures)
+            self.flop_cards.random_strength,
+            self.flop_cards.made_hand_rank_pair,
+            self.flop_cards.made_hand_rank_twopair,
+            self.flop_cards.made_hand_rank_trips,
+            self.flop_cards.made_hand_rank_straight,
+            self.flop_cards.made_hand_rank_flush,
+            self.flop_cards.made_hand_rank_fullhouse,
+            self.flop_cards.board_made_rank_pair,
+            self.flop_cards.board_made_rank_twopair,
+            self.flop_cards.board_made_rank_trips,
+            self.flop_cards.board_made_rank_straight,
+            self.flop_cards.board_made_rank_flush,
+            self.flop_cards.board_made_rank_fullhouse,
+            self.flop_cards.is_3card_flush_draw_board,
+            self.flop_cards.is_4card_flush_draw_board,
+            self.flop_cards.is_3card_straight_draw_board,
+            self.flop_cards.is_4card_straight_draw_board,
+            self.flop_cards.has_3card_flush_draw,
+            self.flop_cards.has_4card_flush_draw,
+            self.flop_cards.has_3card_straight_draw,
+            self.flop_cards.has_4card_straight_draw,
+            self.flop_cards.has_flush_blocker,
+            self.flop_cards.straight_blocker_value,
+
+            # Turn Cards (StreetFeatures)
+            self.turn_cards.random_strength,
+            self.turn_cards.made_hand_rank_pair,
+            self.turn_cards.made_hand_rank_twopair,
+            self.turn_cards.made_hand_rank_trips,
+            self.turn_cards.made_hand_rank_straight,
+            self.turn_cards.made_hand_rank_flush,
+            self.turn_cards.made_hand_rank_fullhouse,
+            self.turn_cards.board_made_rank_pair,
+            self.turn_cards.board_made_rank_twopair,
+            self.turn_cards.board_made_rank_trips,
+            self.turn_cards.board_made_rank_straight,
+            self.turn_cards.board_made_rank_flush,
+            self.turn_cards.board_made_rank_fullhouse,
+            self.turn_cards.is_3card_flush_draw_board,
+            self.turn_cards.is_4card_flush_draw_board,
+            self.turn_cards.is_3card_straight_draw_board,
+            self.turn_cards.is_4card_straight_draw_board,
+            self.turn_cards.has_3card_flush_draw,
+            self.turn_cards.has_4card_flush_draw,
+            self.turn_cards.has_3card_straight_draw,
+            self.turn_cards.has_4card_straight_draw,
+            self.turn_cards.has_flush_blocker,
+            self.turn_cards.straight_blocker_value,
+
+            # River Cards (StreetFeatures)
+            self.river_cards.random_strength,
+            self.river_cards.made_hand_rank_pair,
+            self.river_cards.made_hand_rank_twopair,
+            self.river_cards.made_hand_rank_trips,
+            self.river_cards.made_hand_rank_straight,
+            self.river_cards.made_hand_rank_flush,
+            self.river_cards.made_hand_rank_fullhouse,
+            self.river_cards.board_made_rank_pair,
+            self.river_cards.board_made_rank_twopair,
+            self.river_cards.board_made_rank_trips,
+            self.river_cards.board_made_rank_straight,
+            self.river_cards.board_made_rank_flush,
+            self.river_cards.board_made_rank_fullhouse,
+            self.river_cards.is_3card_flush_draw_board,
+            self.river_cards.is_4card_flush_draw_board,
+            self.river_cards.is_3card_straight_draw_board,
+            self.river_cards.is_4card_straight_draw_board,
+            self.river_cards.has_3card_flush_draw,
+            self.river_cards.has_4card_flush_draw,
+            self.river_cards.has_3card_straight_draw,
+            self.river_cards.has_4card_straight_draw,
+            self.river_cards.has_flush_blocker,
+            self.river_cards.straight_blocker_value,
+
+            # Preflop Betting (BettingRoundFeatures)
+            self.preflop_betting.my_bets_opened,
+            self.preflop_betting.my_raises_made,
+            self.preflop_betting.opp_bets_opened,
+            self.preflop_betting.opp_raises_made,
+            self.preflop_betting.actions_on_street,
+            
+            # Flop Betting (BettingRoundFeatures)
+            self.flop_betting.my_bets_opened,
+            self.flop_betting.my_raises_made,
+            self.flop_betting.opp_bets_opened,
+            self.flop_betting.opp_raises_made,
+            self.flop_betting.actions_on_street,
+
+            # Turn Betting (BettingRoundFeatures)
+            self.turn_betting.my_bets_opened,
+            self.turn_betting.my_raises_made,
+            self.turn_betting.opp_bets_opened,
+            self.turn_betting.opp_raises_made,
+            self.turn_betting.actions_on_street,
+        ]
+        return np.array(vector_parts, dtype=np.float32)
+
