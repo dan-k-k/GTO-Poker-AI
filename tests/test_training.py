@@ -1,6 +1,7 @@
 # tests/test_training.py
 # find . -type d -name "__pycache__" -exec rm -r {} +
 # python -m cProfile -o testtrain.pstats -m unittest tests.test_training
+# snakeviz testtrain.pstats
 import unittest
 import os
 import shutil
@@ -103,8 +104,8 @@ class TestTrainingPipeline(unittest.TestCase):
 
         # Check that buffer files were created for each agent (assuming 2 agents)
         for i in range(2):
-            rl_buffer_path = os.path.join(buffers_dir, f"nfsp_agent{i}_rl_buffer.pkl")
-            sl_buffer_path = os.path.join(buffers_dir, f"nfsp_agent{i}_sl_buffer.pkl")
+            rl_buffer_path = os.path.join(buffers_dir, f"agent{i}_rl_buffer.pkl")
+            sl_buffer_path = os.path.join(buffers_dir, f"agent{i}_sl_buffer.pkl")
             self.assertTrue(os.path.isfile(rl_buffer_path), f"RL buffer for agent {i} was not created.")
             self.assertTrue(os.path.isfile(sl_buffer_path), f"SL buffer for agent {i} was not created.")
 

@@ -384,8 +384,7 @@ class TexasHoldemEnv:
         for p in self.state.surviving_players:
             if not self.state.active[p]:
                 continue
-            seven_cards = self.state.hole_cards[p] + self.state.community
-            hand_ranks[p] = self.evaluator.best_hand_rank(seven_cards)
+            hand_ranks[p] = self.evaluator.best_hand_rank(self.state.hole_cards[p], self.state.community)
         return hand_ranks
 
     def _determine_showdown_winner(self, hand_ranks=None):

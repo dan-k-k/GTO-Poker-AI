@@ -274,7 +274,18 @@ class TestNFSPAgent(unittest.TestCase):
         
         self.agent.last_opp_action_index = 3 
 
-        simulated_opp_hand = [4, 12]
+        simulated_opp_hand = [4, 12] # e.g., Ad, Kd
+        
+        # This side effect handles the two different calls to np.random.choice
+        def mock_choice_side_effect(deck, size, replace):
+            if size == 2: # This is the call for the opponent's hand
+                return np.array(simulated_opp_hand)
+            elif size == 1: # This is the call for the board runout
+                # FIX: Wrap the single card in a list `[]` to create a 1-D array
+                card = [c for c in deck if c not in simulated_opp_hand][0]
+                return np.array([card])
+            # Fallback for other cases
+            return np.random.choice(deck, size=size, replace=replace)
 
         captured_schema = None
         
@@ -287,7 +298,7 @@ class TestNFSPAgent(unittest.TestCase):
             return schema
 
         with patch('app.feature_extractor.FeatureExtractor.extract_features', new=spy_on_extraction), \
-             patch('numpy.random.permutation', return_value=simulated_opp_hand):
+             patch('numpy.random.choice', side_effect=mock_choice_side_effect, create=True):
             
             self.agent.intelligent_equity_trials = 1
             self.agent._calculate_intelligent_equity(

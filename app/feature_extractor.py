@@ -205,19 +205,19 @@ class FeatureExtractor:
 
         # --- Get hand class using the treys evaluator ---
         player_hand_class = 0
-        if len(hole + community) >= 5:
+        if len(hole) + len(community) >= 5:
             # best_hand_rank returns a negative int; negate it back for treys
-            player_raw_rank = -self.evaluator.best_hand_rank(hole + community)
+            player_raw_rank = -self.evaluator.best_hand_rank(hole, community)
             player_hand_class = self.evaluator.evaluator.get_rank_class(player_raw_rank)
 
         board_hand_class = 0
         if len(community) >= 5:
-            board_raw_rank = -self.evaluator.best_hand_rank(community)
+            board_raw_rank = -self.evaluator.best_hand_rank([], community)
             board_hand_class = self.evaluator.evaluator.get_rank_class(board_raw_rank)
 
         # --- Populate Made Hand Features ---
-        self._populate_made_hand_ranks(hole + community, street_schema, is_board=False)
-        self._populate_made_hand_ranks(community, street_schema, is_board=True)
+        self._populate_made_hand_ranks(hole, community, street_schema, is_board=False)
+        self._populate_made_hand_ranks([]  , community, street_schema, is_board=True)
 
         # Only calculate random equity if the flag is not set
         if not skip_random_equity:
@@ -317,11 +317,10 @@ class FeatureExtractor:
                     elif draw_type == 'gutshot':
                         street_schema.straight_blocker_value = 0.5
             
-    def _populate_made_hand_ranks(self, cards: list, street_schema: StreetFeatures, is_board: bool = False):
-        """
-        Calculates the made hand rank from a list of cards and updates the
-        appropriate fields in the provided schema object.
-        """
+    def _populate_made_hand_ranks(self, hole: list, community: list, street_schema: StreetFeatures, is_board: bool = False):
+        """Calculates the made hand rank from separate hole and community cards."""
+        # The function now receives an explicit hole and community list
+        cards = hole + community
         if not cards:
             return
 
@@ -348,13 +347,11 @@ class FeatureExtractor:
         if len(cards) < 5:
             return # Not enough cards for straights, flushes, etc.
 
-        # 1. Get the single integer rank from our helper.
-        raw_rank = -self.evaluator.best_hand_rank(cards)
+        # Now we call best_hand_rank with the clean, separate lists
+        raw_rank = -self.evaluator.best_hand_rank(hole, community)
 
-        # 2. Use the treys evaluator to get the hand class (1=SF, 2=Quads, ..., 9=HC).
-        hand_class = self.evaluator.evaluator.get_rank_class(raw_rank) # treys' evaluator
-
-        # 3. Set flags based on the hand class returned by treys.
+        # ... (rest of the function is the same)
+        hand_class = self.evaluator.evaluator.get_rank_class(raw_rank)
         if hand_class == 1: # Straight Flush
             setattr(street_schema, f"{prefix}straight", 1.0)
             setattr(street_schema, f"{prefix}flush", 1.0)
@@ -484,8 +481,8 @@ class FeatureExtractor:
             board_runout = remaining_deck[:num_cards_to_deal]
             final_board = community + list(board_runout)
             
-            my_rank = self.evaluator.best_hand_rank(my_hole + final_board)
-            opp_rank = self.evaluator.best_hand_rank(opp_hole + final_board)
+            my_rank = self.evaluator.best_hand_rank(my_hole, final_board)
+            opp_rank = self.evaluator.best_hand_rank(opp_hole, final_board)
 
             if my_rank > opp_rank: wins += 1.0
             elif my_rank == opp_rank: wins += 0.5

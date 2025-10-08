@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import pickle 
 import random
 from collections import deque
 from typing import Dict, List, Tuple, Optional
@@ -380,9 +381,10 @@ class NFSPAgent(NeuralNetworkAgent):
 
             board_runout = np.random.choice(current_remaining_deck, size=num_to_deal, replace=False)
             final_board = community_cards + list(board_runout)
-            
-            my_rank = self.feature_extractor.evaluator.best_hand_rank(my_hole_cards + final_board)
-            opp_rank = self.feature_extractor.evaluator.best_hand_rank(opp_hole_candidate + final_board)
+            # import pdb; pdb.set_trace()
+
+            my_rank = self.feature_extractor.evaluator.best_hand_rank(my_hole_cards, final_board)
+            opp_rank = self.feature_extractor.evaluator.best_hand_rank(opp_hole_candidate, final_board)
 
             outcome = 0.0
             if my_rank > opp_rank: outcome = 1.0

@@ -189,22 +189,16 @@ class HandEvaluator:
         # Create the evaluator instance once
         self.evaluator = Evaluator()
 
-    def best_hand_rank(self, cards: list[int]) -> int:
-        """
-        Evaluates a hand of 5-7 cards and returns a numerical rank.
-        Lower rank is better in treys.
-        """
-        if len(cards) < 5:
-            return 9999 # Return a very bad rank if not enough cards
+    def best_hand_rank(self, hand: list[int], board: list[int]) -> int:
+        if len(hand) + len(board) < 5:
+            return 9999
 
-        # Convert integer cards (0-51) to treys Card objects
-        treys_cards = [Card.new(card_to_string(c)) for c in cards]
+        # Convert cards to the treys format
+        hand_treys = [Card.new(card_to_string(c)) for c in hand]
+        board_treys = [Card.new(card_to_string(c)) for c in board]
 
-        hand = treys_cards[:2]
-        board = treys_cards[2:]
-
-        # Higher is better
-        return -self.evaluator.evaluate(board, hand)
+        # No more splitting! Just pass the arguments directly.
+        return -self.evaluator.evaluate(board_treys, hand_treys)
 
     def get_rank_string(self, rank: int) -> str:
         """Converts a treys integer rank into a human-readable string."""

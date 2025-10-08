@@ -50,7 +50,6 @@ class HandHistoryLogger:
         community = state_before.community
 
         hand_type_name = "N/A" # Default value
-        cards = state_before.hole_cards[player_id] + community
         
         # Case 1: Preflop (no community cards yet)
         if not community:
@@ -63,8 +62,8 @@ class HandHistoryLogger:
                 hand_type_name = "High Card"
         # Case 2: Flop, Turn, and River
         else:
-            # The evaluator can determine the best hand made so far with 3+ cards
-            rank = self.evaluator.best_hand_rank(cards)
+            hole_cards = state_before.hole_cards[player_id]
+            rank = self.evaluator.best_hand_rank(hole_cards, community)
             hand_type_name = self.evaluator.get_rank_string(rank)
 
         features_str = ""
