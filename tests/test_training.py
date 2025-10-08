@@ -1,7 +1,8 @@
 # tests/test_training.py
 # find . -type d -name "__pycache__" -exec rm -r {} +
 
-# Begins two models from scratch, making it a good benchmark, but there will be some variance still:
+# Begins two models from scratch, making it a decent benchmark, 
+# but there will be some small variance still ~5%:
 # python -m cProfile -o testtrain.pstats -m unittest tests.test_training
 # snakeviz testtrain.pstats
 import unittest
