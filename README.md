@@ -1,6 +1,6 @@
 ## GTO Poker Bot using Neural Fictitious Self-Play (NFSP)
 
-This project is a Python-based implementation of a Texas Hold'em poker bot that learns to play using the Neural Fictitious Self-Play (NFSP) algorithm. The goal is to train an agent that approximates a Game Theory Optimal (GTO) strategy for heads-up (two-player) No-Limit Texas Hold'em.
+This project is a Python-based implementation of a Texas Hold'em poker bot that learns to play using the Neural Fictitious Self-Play algorithm. The goal is to train an agent that approximates a Game Theory Optimal strategy heads-up (two-player).
 
 The agent learns by playing against itself, using a combination of Reinforcement Learning (for finding the best response) and Supervised Learning (for building an average strategy).
 
@@ -39,7 +39,7 @@ python -m cProfile -o testtrain.pstats -m unittest tests.test_training
 snakeviz testtrain.pstats
 ```
 
-## Play against a trained Agent
+### Play against a trained Agent
 ```bash
 python main.py
 # Go to: http://127.0.0.1:5001
