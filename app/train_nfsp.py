@@ -234,59 +234,29 @@ class NFSPTrainer:
             
         print("--- End Evaluation ---\n")
 
-    def _save_buffers(self):
-        """Save the RL and SL replay buffers for all agents."""
-        buffer_dir = os.path.join(self.output_dir, "buffers")
-        os.makedirs(buffer_dir, exist_ok=True)
-        print("Saving replay buffers...")
-        try:
-            for i, agent in enumerate(self.agents):
-                # Save RL buffer by dumping the internal deque object
-                rl_path = os.path.join(buffer_dir, f"nfsp_agent{i}_rl_buffer.pkl")
-                with open(rl_path, 'wb') as f:
-                    pickle.dump(agent.rl_buffer.buffer, f)
-                
-                # Save SL buffer
-                sl_path = os.path.join(buffer_dir, f"nfsp_agent{i}_sl_buffer.pkl")
-                with open(sl_path, 'wb') as f:
-                    pickle.dump(agent.sl_buffer.buffer, f)
-            print("Buffers saved successfully.")
-        except Exception as e:
-            print(f"Error saving buffers: {e}")
-
     def _load_buffers(self):
-        """Load the RL and SL replay buffers for all agents if they exist."""
+        """Helper to load replay buffers for all agents."""
         buffer_dir = os.path.join(self.output_dir, "buffers")
         if not os.path.isdir(buffer_dir):
-            print("No buffer directory found, starting with empty buffers.")
+            print("No buffer directory found, skipping buffer loading.")
             return
 
-        print("Attempting to load replay buffers to resume state...")
-        try:
-            all_found = True
-            for i, agent in enumerate(self.agents):
-                rl_path = os.path.join(buffer_dir, f"nfsp_agent{i}_rl_buffer.pkl")
-                sl_path = os.path.join(buffer_dir, f"nfsp_agent{i}_sl_buffer.pkl")
+        print("Attempting to load replay buffers...")
+        for i, agent in enumerate(self.agents):
+            rl_path = os.path.join(buffer_dir, f"agent{i}_rl_buffer.pkl")
+            sl_path = os.path.join(buffer_dir, f"agent{i}_sl_buffer.pkl")
+            agent.load_buffers(rl_path, sl_path)
 
-                if os.path.exists(rl_path):
-                    with open(rl_path, 'rb') as f:
-                        # Load the deque and assign it back to the buffer object
-                        agent.rl_buffer.buffer = pickle.load(f)
-                    print(f"Loaded RL buffer for agent {i} with {len(agent.rl_buffer)} experiences.")
-                else:
-                    all_found = False
-
-                if os.path.exists(sl_path):
-                    with open(sl_path, 'rb') as f:
-                        agent.sl_buffer.buffer = pickle.load(f)
-                    print(f"Loaded SL buffer for agent {i} with {len(agent.sl_buffer)} experiences.")
-                else:
-                    all_found = False
-            
-            if not all_found:
-                print("Could not find all buffer files. Some agents may start with empty buffers.")
-        except Exception as e:
-            print(f"Could not load buffers: {e}. Starting with empty buffers.")
+    def _save_buffers(self):
+        """Helper to save replay buffers for all agents."""
+        buffer_dir = os.path.join(self.output_dir, "buffers")
+        os.makedirs(buffer_dir, exist_ok=True)
+        
+        print("Saving replay buffers...")
+        for i, agent in enumerate(self.agents):
+            rl_path = os.path.join(buffer_dir, f"agent{i}_rl_buffer.pkl")
+            sl_path = os.path.join(buffer_dir, f"agent{i}_sl_buffer.pkl")
+            agent.save_buffers(rl_path, sl_path)
 
     def _load_models(self, suffix: str):
         """Helper to load models for all agents with a given suffix."""
