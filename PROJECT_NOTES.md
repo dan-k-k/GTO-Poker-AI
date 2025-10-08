@@ -3,6 +3,7 @@
 ## Current Focus
 - Remote API so anyone can play against the trained agent
 - Performance
+- Better evaluation logic for saving best models. Currently assuming latest model is best.
 - Possible addition of features on board/hand texture for more context on when to bluff etc.
   
 ## Long-term Goals

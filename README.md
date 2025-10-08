@@ -36,8 +36,9 @@ pip install -r requirements.txt
 ```bash
 python -m app.train_nfsp
 # You can monitor training_output/hand_history.log to see agents' plays
+# You can pause(ctrl+C) / continue training whenever
 
-# If you make performance improvements, benchmark with:
+# If you make performance improvements, benchmark 100 episodes with:
 python -m cProfile -o testtrain.pstats -m unittest tests.test_training
 snakeviz testtrain.pstats
 ```
