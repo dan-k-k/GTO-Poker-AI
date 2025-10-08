@@ -72,6 +72,7 @@ class NFSPTrainer:
         # === Attempt to load latest models to resume training ===
         self._load_buffers()
         self._load_models(suffix="_latest")
+        self._load_buffers()
         
     def train(self):
         """Main training loop."""
@@ -109,8 +110,8 @@ class NFSPTrainer:
         finally:
             self.stats['training_time'] = time.time() - start_time
             print(f"\nTraining completed or interrupted after {self.stats['training_time']:.2f} seconds.\nContinue training with python -m app.train_nfsp.")
-            
-            self._save_buffers() 
+
+            self._save_buffers()
             self._save_stats()
         
     def _run_episode(self, episode: int) -> List[float]:

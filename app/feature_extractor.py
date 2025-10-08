@@ -124,7 +124,7 @@ class FeatureExtractor:
         STARTING_STACK_BB = state.starting_stack / bb_size if bb_size > 0 else 200
         MAX_POT_BB = (state.starting_stack * self.num_players) / bb_size if bb_size > 0 else 400
 
-        # --- NORMALIZED: Stacks and Pot ---
+        # --- Stacks and Pot ---
         my_stack_bb_raw = state.stacks[self.seat_id] / bb_size
         opp_stack_bb_raw = state.stacks[1 - self.seat_id] / bb_size
         pot_bb_raw = state.pot / bb_size
