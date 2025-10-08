@@ -38,7 +38,7 @@ class TestHyperRigorousHoldemEnv(unittest.TestCase):
             bb_pos = (dealer_pos + 1) % num_players
             to_move = sb_pos
         else:
-            # This logic assumes players are indexed contiguously, which works
+            # This assumes players are indexed contiguously
             sb_pos = (dealer_pos + 1) % num_players
             bb_pos = (dealer_pos + 2) % num_players
             to_move = (dealer_pos + 3) % num_players
@@ -207,7 +207,7 @@ class TestHyperRigorousHoldemEnv(unittest.TestCase):
         # The hand is now over. The final state is returned.
         self.assertTrue(done, "Hand should be terminal after final all-in call")
 
-        # Now, we assert the final state is correct.
+        # Now, assert the final state is correct.
         self.assertEqual(state.win_reason, 'tournament_winner')
         self.assertEqual(state.winners, [0], "Player 0 should be the sole winner")
         self.assertEqual(state.surviving_players, [0], "Only P0 should be in surviving_players")

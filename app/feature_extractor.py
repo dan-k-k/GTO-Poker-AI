@@ -84,7 +84,7 @@ class FeatureExtractor:
                 self._extract_static_street_features(state, street_cards_schema, stage, skip_random_equity=skip_random_equity)
                 self._street_features_extracted[stage] = True
             
-            # Populate FINALIZED betting history from our internal tracker
+            # Populate FINALIZED betting history from internal tracker
             betting_history_schema.my_bets_opened = self._normalize_clip(self._betting_history['my_bets_opened'][stage], 10.0)
             betting_history_schema.my_raises_made = self._normalize_clip(self._betting_history['my_raises_made'][stage], 10.0)
             betting_history_schema.opp_bets_opened = self._normalize_clip(self._betting_history['opp_bets_opened'][stage], 10.0)
@@ -271,7 +271,7 @@ class FeatureExtractor:
             street_schema.has_4card_straight_draw = four_q
 
         # --- BLOCKER FEATURES ---
-        # Calculate how our private hole cards block the public board draws
+        # Calculate how private hole cards block the public board draws
         hole_ranks = [c // 4 for c in hole]
         hole_suits = [c % 4 for c in hole]
 
@@ -301,7 +301,7 @@ class FeatureExtractor:
         # Default the feature to 0.0
         street_schema.straight_blocker_value = 0.0
 
-        # First, check that we don't already have a straight
+        # First, check for no current straight
         is_player_straight = player_hand_class in {1, 5} 
 
         if not is_player_straight and len(community) >= 3:
@@ -319,7 +319,7 @@ class FeatureExtractor:
             
     def _populate_made_hand_ranks(self, hole: list, community: list, street_schema: StreetFeatures, is_board: bool = False):
         """Calculates the made hand rank from separate hole and community cards."""
-        # The function now receives an explicit hole and community list
+
         cards = hole + community
         if not cards:
             return
@@ -347,10 +347,9 @@ class FeatureExtractor:
         if len(cards) < 5:
             return # Not enough cards for straights, flushes, etc.
 
-        # Now we call best_hand_rank with the clean, separate lists
+        # Now call best_hand_rank with the clean, separate lists
         raw_rank = -self.evaluator.best_hand_rank(hole, community)
 
-        # ... (rest of the function is the same)
         hand_class = self.evaluator.evaluator.get_rank_class(raw_rank)
         if hand_class == 1: # Straight Flush
             setattr(street_schema, f"{prefix}straight", 1.0)
@@ -520,7 +519,7 @@ class FeatureExtractor:
         return PREFLOP_EQUITY.get(key, 0.0)
     
     def _get_street_cards_schema(self, stage: int) -> StreetFeatures:
-        """Helper to get the correct street cards schema for a given stage."""
+        """Helper to get the street cards schema for a given stage."""
         if stage == 0:
             return self.schema.preflop_cards
         elif stage == 1:
@@ -533,7 +532,7 @@ class FeatureExtractor:
             raise ValueError(f"Invalid stage: {stage}")
     
     def _get_betting_history_schema(self, stage: int) -> BettingRoundFeatures:
-        """Helper to get the correct betting history schema for a given stage."""
+        """Helper to get the betting history schema for a given stage."""
         if stage == 0:
             return self.schema.preflop_betting
         elif stage == 1:

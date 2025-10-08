@@ -1,6 +1,6 @@
 # app/_preflop_equity.py
 
-# This file contains pre-computed heads-up (1v1) pre-flop equity values.
+# This file contains pre-computed heads-up pre-flop equity values.
 # These values represent the probability of a hand winning against a random hand.
 
 PREFLOP_EQUITY = {

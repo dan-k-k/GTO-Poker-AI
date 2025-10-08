@@ -79,7 +79,7 @@ class HandFeatures:
 @dataclass
 class PokerFeatureSchema:
     """
-    The main, self-documenting schema for our entire feature vector.
+    The main, self-documenting schema for entire feature vector.
     This class defines the structure, and the `to_vector` method flattens it
     for the neural network.
     """

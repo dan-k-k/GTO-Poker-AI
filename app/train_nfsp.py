@@ -113,14 +113,13 @@ class NFSPTrainer:
             
             # Final save of stats and buffers
             self._save_stats()
-            self._save_buffers() # <-- ADD THIS LINE
+            self._save_buffers()
         
     def _run_episode(self, episode: int) -> List[float]:
         """Run a single training episode with logging."""
         self.hand_counter += 1
         
-        # This will start a new tournament if the last one ended, or it will
-        # start a new hand with preserved stacks if the tournament is ongoing.
+        # Start a new hand with preserved stacks if the tournament is ongoing.
         state = self.env.reset()
         
         for agent in self.agents:
@@ -139,7 +138,7 @@ class NFSPTrainer:
             state_before = state.copy()
             
             # Unpack the `features_schema` object
-            action, amount, predictions, policy_name, features_schema = agent.compute_action(state) # <-- AFTER
+            action, amount, predictions, policy_name, features_schema = agent.compute_action(state)
             
             # Pass the object to the logger
             self.logger.log_action(
@@ -225,7 +224,7 @@ class NFSPTrainer:
             
             print(f"Agent {i}: Win Rate = {win_rate:.2%}, Avg Reward = {avg_reward:.2f}")
 
-            # Check if this is the new best performance (we'll track Agent 0)
+            # Check if this is the new best performance (track Agent 0)
             if i == 0 and avg_reward > self.best_avg_reward:
                 self.best_avg_reward = avg_reward
                 print(f"New best performance for Agent 0! Avg Reward: {avg_reward:.2f}. Saving best models...")

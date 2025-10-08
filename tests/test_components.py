@@ -220,7 +220,7 @@ class TestNFSPAgent(unittest.TestCase):
     def test_intelligent_equity_batching(self):
         """
         Tests that the equity simulation correctly batches feature vectors
-        before calling the network, reflecting the new optimized logic.
+        before calling the network.
         """
         num_trials = 5
         self.agent.last_opp_action_index = 2
@@ -281,7 +281,6 @@ class TestNFSPAgent(unittest.TestCase):
             if size == 2: # This is the call for the opponent's hand
                 return np.array(simulated_opp_hand)
             elif size == 1: # This is the call for the board runout
-                # FIX: Wrap the single card in a list `[]` to create a 1-D array
                 card = [c for c in deck if c not in simulated_opp_hand][0]
                 return np.array([card])
             # Fallback for other cases
@@ -370,7 +369,7 @@ class TestNFSPAgent(unittest.TestCase):
     def test_compute_action_uses_eta_policy(self):
         """
         Tests that compute_action() correctly uses eta to select between
-        the Best Response (BR) and Average Strategy (AS) networks. 🎲
+        the Best Response (BR) and Average Strategy (AS) networks.
         """
         mock_state = _create_mock_state()
         

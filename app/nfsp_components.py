@@ -79,7 +79,7 @@ class NFSPAgent(NeuralNetworkAgent):
         # Store the intelligent trials count for this agent
         self.intelligent_equity_trials = intelligent_equity_trials
 
-        # Replace the parent's feature extractor with one that uses our random trials count
+        # Replace the parent's feature extractor with one that uses random trials count
         self.feature_extractor = FeatureExtractor(
             seat_id=self.seat_id,
             random_equity_trials=random_equity_trials
@@ -135,7 +135,7 @@ class NFSPAgent(NeuralNetworkAgent):
         
     def observe(self, player_action, player_id, state_before_action: GameState, next_state: GameState):
         """
-        Observe an action. If it's our action, store the experience tuple
+        Observe an action. If it's p0's action, store the experience tuple
         in the current hand's trajectory.
         """
         action_taken, amount_put_in = player_action
@@ -343,7 +343,7 @@ class NFSPAgent(NeuralNetworkAgent):
             features_schema = opp_feature_extractor.extract_features(
                 temp_game_state, skip_random_equity=True
             )
-            # Append the raw numpy vector and the hand to our lists
+            # Append the raw numpy vector and the hand to lists
             feature_vectors_to_batch.append(features_schema.to_vector())
             candidate_hands.append(opp_hole_candidate)
 
@@ -367,7 +367,7 @@ class NFSPAgent(NeuralNetworkAgent):
         total_weight = 0.0
         
         for i, opp_hole_candidate in enumerate(candidate_hands):
-            # Get the weight from our pre-computed batch results
+            # Get the weight from pre-computed batch results
             weight = all_action_probs[i][self.last_opp_action_index]
             
             if weight < 1e-6:

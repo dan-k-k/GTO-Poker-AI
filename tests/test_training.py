@@ -31,7 +31,6 @@ TEST_CONFIG_DATA = {
         'rl_buffer_capacity': 100,
         'sl_buffer_capacity': 100,
     },
-    # --- FIX: This section was missing and is required by the agent ---
     'simulations': {
         'random_equity_trials': 200,
         'intelligent_equity_trials': 200,
@@ -70,7 +69,7 @@ class TestTrainingPipeline(unittest.TestCase):
 
     def test_training_dry_run_produces_all_artifacts(self):
         try:
-            # The trainer now writes to a hardcoded "training_output" dir.
+            # The trainer writes to a hardcoded "training_output" dir.
             # The test will check for artifacts there.
             run_training(config_path=TEST_CONFIG_PATH)
         except Exception as e:

@@ -91,7 +91,6 @@ class HandHistoryLogger:
             probs_str = "--"
             e_rew_str = "--"
 
-        # Add the loss to the log line string
         log_line = f"    [{player_name}({policy_name}): {' '.join(hole)} ({hand_type_name}) | " \
                 f"{features_str}" \
                 f"P:[{probs_str}] | x_Rew:{e_rew_str} | Stack: {stack_bb:.1f}BB]"
