@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import random
+import pickle
+import os
 from collections import deque
 from typing import Dict, List, Tuple, Optional
 
@@ -302,78 +304,83 @@ class NFSPAgent(NeuralNetworkAgent):
 
     def _calculate_intelligent_equity(self, my_hole_cards, community_cards, historical_context=None) -> float:
         """
-        Calculates Monte Carlo equity using batched neural network predictions for efficiency.
+        Calculates Monte Carlo equity using a pre-computed base vector for efficiency.
         """
-        # Use the value stored from the config file
         trials = self.intelligent_equity_trials
-
         if self.opponent_as_network is None or self.last_opp_state_before_action is None:
             return 0.5
 
         opp_seat_id = 1 - self.seat_id
-        # When creating the temporary extractor, pass the random trials count again
         opp_feature_extractor = FeatureExtractor(
             seat_id=opp_seat_id,
             random_equity_trials=self.feature_extractor.random_equity_trials
         )
-        
         if historical_context:
             opp_feature_extractor._betting_history = historical_context['betting_history']
             opp_feature_extractor._action_counts_this_street = historical_context['action_counts']
             opp_feature_extractor.last_aggressor = historical_context['last_aggressor']
 
+        # --- PHASE 1: PRE-COMPUTATION (Done ONCE) ---
+        base_state = self.last_opp_state_before_action.copy()
+        base_state.hole_cards[opp_seat_id] = []
+
+        base_schema = PokerFeatureSchema()
+        opp_feature_extractor.new_hand()
+        opp_feature_extractor._update_dynamic_features(base_state, agent=None)
+        base_schema.dynamic = opp_feature_extractor.schema.dynamic
+        base_schema.preflop_betting = opp_feature_extractor.schema.preflop_betting
+        base_schema.flop_betting = opp_feature_extractor.schema.flop_betting
+        base_schema.turn_betting = opp_feature_extractor.schema.turn_betting
+        base_vector = base_schema.to_vector()
+        
+        # THIS IS THE CORRECTED SECTION
+        # Find two "safe" cards for the dummy hand that are not on the board
+        safe_dummy_hand = []
+        board_cards_set = set(base_state.community)
+        card_id = 0
+        while len(safe_dummy_hand) < 2 and card_id < 52:
+            if card_id not in board_cards_set:
+                safe_dummy_hand.append(card_id)
+            card_id += 1
+        
+        hand_only_vector = self._extract_opponent_hand_features(safe_dummy_hand, base_state, opp_feature_extractor)
+        static_features_mask = (hand_only_vector == 0)
+
+        # --- PHASE 2: FAST SIMULATION LOOP ---
+        feature_vectors_to_batch = []
+        candidate_hands = []
         deck = [c for c in range(52) if c not in my_hole_cards and c not in community_cards]
         if len(deck) < 2: return 0.5
 
-        # --- PHASE 1: COLLECT ---
-        # Gather all feature vectors and corresponding hands before making any predictions.
-        feature_vectors_to_batch = []
-        candidate_hands = []
-        
-        # In each trial, sample a new random opponent hand from the deck. May repeat.
         for _ in range(trials):
-            # Sample 2 cards without replacement from the deck.
             opp_hole_candidate = list(np.random.choice(deck, size=2, replace=False))
             
-            opp_feature_extractor.new_hand()
-            temp_game_state = self.last_opp_state_before_action.copy()
-            temp_game_state.hole_cards[opp_seat_id] = opp_hole_candidate
-
-            features_schema = opp_feature_extractor.extract_features(
-                temp_game_state, skip_random_equity=True
+            hand_specific_vector = self._extract_opponent_hand_features(
+                opp_hole_candidate, self.last_opp_state_before_action, opp_feature_extractor
             )
-            # Append the raw numpy vector and the hand to our lists
-            feature_vectors_to_batch.append(features_schema.to_vector())
+            
+            final_vector = base_vector.copy()
+            final_vector[~static_features_mask] = hand_specific_vector[~static_features_mask]
+
+            feature_vectors_to_batch.append(final_vector)
             candidate_hands.append(opp_hole_candidate)
 
-        # --- PHASE 2: PREDICT ---
-        # Process all collected feature vectors in one single batch.
+        # --- PHASE 3: BATCH PREDICTION & SHOWDOWN (Unchanged) ---
         if not feature_vectors_to_batch:
             return 0.5
             
-        # Stack the list of numpy arrays into a single PyTorch tensor
         batch_tensor = torch.FloatTensor(np.array(feature_vectors_to_batch))
-
         with torch.no_grad():
-            # Make one single, efficient call to the network
             batch_predictions = self.opponent_as_network(batch_tensor)
-            
         all_action_probs = batch_predictions['action_probs'].numpy()
         
-        # --- PHASE 3: PROCESS ---
-        # Loop through the batched results to run showdowns and calculate the final equity.
         weighted_wins = 0.0
         total_weight = 0.0
-        
         for i, opp_hole_candidate in enumerate(candidate_hands):
-            # Get the weight from our pre-computed batch results
             weight = all_action_probs[i][self.last_opp_action_index]
-            
             if weight < 1e-6:
                 continue
 
-            # Run the showdown simulation
-            # Create a new deck for each trial that excludes the current candidate's hand
             current_remaining_deck = [c for c in deck if c not in opp_hole_candidate]
             num_to_deal = 5 - len(community_cards)
             if len(current_remaining_deck) < num_to_deal: continue
@@ -388,11 +395,39 @@ class NFSPAgent(NeuralNetworkAgent):
             if my_rank > opp_rank: outcome = 1.0
             elif my_rank == opp_rank: outcome = 0.5
             
-            # Accumulate the weighted results
             weighted_wins += outcome * weight
             total_weight += weight
         
         return weighted_wins / total_weight if total_weight > 0 else 0.5
+
+    def _extract_opponent_hand_features(self, opp_hole_cards: List[int], state: GameState, opp_feature_extractor: FeatureExtractor) -> np.ndarray:
+        """
+        A minimal feature extractor for simulation.
+        It only calculates features that depend on the opponent's hole cards.
+        """
+        temp_state = state.copy()
+        opp_id = 1 - self.seat_id
+        temp_state.hole_cards[opp_id] = opp_hole_cards
+        
+        # We create a temporary, clean schema for just the hand-specific parts
+        schema = PokerFeatureSchema()
+
+        # 1. Hand features (is_pair, is_suited, etc.)
+        opp_feature_extractor._extract_hand_features(temp_state)
+        schema.hand = opp_feature_extractor.schema.hand
+
+        # 2. Made hands and draws for each street
+        for stage in range(temp_state.stage + 1):
+            street_schema = opp_feature_extractor._get_street_cards_schema(stage)
+            opp_feature_extractor._extract_static_street_features(temp_state, street_schema, stage, skip_random_equity=True)
+        
+        schema.preflop_cards = opp_feature_extractor.schema.preflop_cards
+        schema.flop_cards = opp_feature_extractor.schema.flop_cards
+        schema.turn_cards = opp_feature_extractor.schema.turn_cards
+        schema.river_cards = opp_feature_extractor.schema.river_cards
+        
+        # Return only the parts of the vector that change with the hand
+        return schema.to_vector()
 
     def save_models(self, br_path: str = "nfsp_br.pt", as_path: str = "nfsp_as.pt"):
         """Save both networks."""
@@ -410,4 +445,28 @@ class NFSPAgent(NeuralNetworkAgent):
             print(f"Loaded NFSP models from {br_path} and {as_path}")
         except Exception as e:
             print(f"Could not load NFSP models: {e}")
+
+    def save_buffers(self, rl_path: str, sl_path: str):
+        """Saves the RL and SL replay buffers to disk using pickle."""
+        try:
+            with open(rl_path, 'wb') as f:
+                pickle.dump(self.rl_buffer, f)
+            with open(sl_path, 'wb') as f:
+                pickle.dump(self.sl_buffer, f)
+        except Exception as e:
+            print(f"Error saving buffers: {e}")
+
+    def load_buffers(self, rl_path: str, sl_path: str):
+        """Loads the RL and SL replay buffers from disk if they exist."""
+        try:
+            if os.path.exists(rl_path) and os.path.exists(sl_path):
+                with open(rl_path, 'rb') as f:
+                    self.rl_buffer = pickle.load(f)
+                with open(sl_path, 'rb') as f:
+                    self.sl_buffer = pickle.load(f)
+                print(f"Successfully loaded replay buffers. RL: {len(self.rl_buffer)}, SL: {len(self.sl_buffer)}")
+            else:
+                print("No replay buffer files found, starting with empty buffers.")
+        except Exception as e:
+            print(f"Error loading buffers: {e}. Starting with empty buffers.")
 

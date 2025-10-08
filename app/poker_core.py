@@ -186,25 +186,25 @@ class GameState:
 
 class HandEvaluator:
     def __init__(self):
-        # Create the evaluator instance once
+        """Create the evaluator instance and a cache for card objects."""
         self.evaluator = Evaluator()
+        # Create a lookup table to map our 0-51 integers directly to treys.Card objects
+        self.card_cache = [Card.new(card_to_string(i)) for i in range(52)]
 
     def best_hand_rank(self, cards: list[int]) -> int:
         """
         Evaluates a hand of 5-7 cards and returns a numerical rank.
-        Lower rank is better in treys.
+        Lower rank is better in treys. This version is optimized with a cache
+        and corrected to use the treys library properly.
         """
         if len(cards) < 5:
             return 9999 # Return a very bad rank if not enough cards
 
-        # Convert integer cards (0-51) to treys Card objects
-        treys_cards = [Card.new(card_to_string(c)) for c in cards]
+        treys_cards = [self.card_cache[c] for c in cards]
 
-        hand = treys_cards[:2]
-        board = treys_cards[2:]
-
-        # Higher is better
-        return -self.evaluator.evaluate(board, hand)
+        # To evaluate the best 5-card hand from a *single list* of 5-7 cards, we 
+        # pass the whole list as the board.
+        return -self.evaluator.evaluate(board=treys_cards, hand=[])
 
     def get_rank_string(self, rank: int) -> str:
         """Converts a treys integer rank into a human-readable string."""
