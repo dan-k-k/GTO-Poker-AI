@@ -328,7 +328,7 @@ class TestNFSPAgent(unittest.TestCase):
 
     def test_new_hand_resets_state(self):
         """
-        Tests that new_hand() correctly resets the agent's per-hand state. 🧹
+        Tests that new_hand() correctly resets the agent's per-hand state.
         """
         self._set_agent_mid_hand_state()
         self.assertTrue(self.agent.last_state is not None)
@@ -344,7 +344,7 @@ class TestNFSPAgent(unittest.TestCase):
     def test_observe_builds_trajectory_correctly(self):
         """
         Tests that the observe() method correctly appends the agent's own
-        experiences to the trajectory and ignores the opponent's. 📝
+        experiences to the trajectory and ignores the opponent's.
         """
         self._set_agent_mid_hand_state()
         initial_trajectory_len = len(self.agent.current_hand_trajectory)
