@@ -8,6 +8,7 @@ import numpy as np
 import json
 import time
 import yaml
+import pickle
 from typing import Dict, List
 from app.TexasHoldemEnv import TexasHoldemEnv
 from app.nfsp_components import NFSPAgent
@@ -69,6 +70,7 @@ class NFSPTrainer:
         self.hand_counter = 0
         
         # === Attempt to load latest models to resume training ===
+        self._load_buffers()
         self._load_models(suffix="_latest")
         
     def train(self):
@@ -108,7 +110,7 @@ class NFSPTrainer:
             self.stats['training_time'] = time.time() - start_time
             print(f"\nTraining completed or interrupted after {self.stats['training_time']:.2f} seconds.\nContinue training with python -m app.train_nfsp.")
             
-            # Final save of stats only
+            self._save_buffers() 
             self._save_stats()
         
     def _run_episode(self, episode: int) -> List[float]:
@@ -263,7 +265,31 @@ class NFSPTrainer:
             br_path = os.path.join(save_dir, f"nfsp_agent{i}_br{suffix}.pt")
             as_path = os.path.join(save_dir, f"nfsp_agent{i}_as{suffix}.pt")
             agent.save_models(br_path, as_path)
+
+    def _load_buffers(self):
+        """Helper to load replay buffers for all agents."""
+        buffer_dir = os.path.join(self.output_dir, "buffers")
+        if not os.path.isdir(buffer_dir):
+            print("No buffer directory found, skipping buffer loading.")
+            return
+
+        print("Attempting to load replay buffers...")
+        for i, agent in enumerate(self.agents):
+            rl_path = os.path.join(buffer_dir, f"agent{i}_rl_buffer.pkl")
+            sl_path = os.path.join(buffer_dir, f"agent{i}_sl_buffer.pkl")
+            agent.load_buffers(rl_path, sl_path)
+
+    def _save_buffers(self):
+        """Helper to save replay buffers for all agents."""
+        buffer_dir = os.path.join(self.output_dir, "buffers")
+        os.makedirs(buffer_dir, exist_ok=True)
         
+        print("Saving replay buffers...")
+        for i, agent in enumerate(self.agents):
+            rl_path = os.path.join(buffer_dir, f"agent{i}_rl_buffer.pkl")
+            sl_path = os.path.join(buffer_dir, f"agent{i}_sl_buffer.pkl")
+            agent.save_buffers(rl_path, sl_path)
+
     def _save_stats(self):
         """Save training statistics."""
         # --- Use the main output directory for the stats file ---

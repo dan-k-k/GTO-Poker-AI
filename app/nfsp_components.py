@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import random
+import pickle
 from collections import deque
 from typing import Dict, List, Tuple, Optional
 
@@ -410,4 +411,28 @@ class NFSPAgent(NeuralNetworkAgent):
             print(f"Loaded NFSP models from {br_path} and {as_path}")
         except Exception as e:
             print(f"Could not load NFSP models: {e}")
+
+    def save_buffers(self, rl_path: str, sl_path: str):
+        """Saves the RL and SL replay buffers to disk using pickle."""
+        try:
+            with open(rl_path, 'wb') as f:
+                pickle.dump(self.rl_buffer, f)
+            with open(sl_path, 'wb') as f:
+                pickle.dump(self.sl_buffer, f)
+        except Exception as e:
+            print(f"Error saving buffers: {e}")
+
+    def load_buffers(self, rl_path: str, sl_path: str):
+        """Loads the RL and SL replay buffers from disk if they exist."""
+        try:
+            if os.path.exists(rl_path) and os.path.exists(sl_path):
+                with open(rl_path, 'rb') as f:
+                    self.rl_buffer = pickle.load(f)
+                with open(sl_path, 'rb') as f:
+                    self.sl_buffer = pickle.load(f)
+                print(f"Successfully loaded replay buffers. RL: {len(self.rl_buffer)}, SL: {len(self.sl_buffer)}")
+            else:
+                print("No replay buffer files found, starting with empty buffers.")
+        except Exception as e:
+            print(f"Error loading buffers: {e}. Starting with empty buffers.")
 

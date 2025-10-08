@@ -8,6 +8,7 @@ __pycache__/
 
 # Training and output data
 training_output/
+training_output_backup/
 flask_session/
 app/archive/
 

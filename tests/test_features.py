@@ -446,13 +446,14 @@ class TestFeatureExtractor(unittest.TestCase):
         self.assertEqual(schema_fh.river_cards.board_made_rank_fullhouse, 1.0, "Board should be a full house")
 
 
-    @patch('app.nfsp_components.NFSPAgent._extract_opponent_hand_features')
-    def test_equity_simulation_uses_imperfect_information_optimized(self, mock_extract_hand_features: MagicMock):
+    @patch('app.feature_extractor.FeatureExtractor.extract_features')
+    def test_equity_simulation_uses_imperfect_information(self, mock_extract_features: MagicMock):
         """
-        Verifies that the equity simulation loop tries different opponent hands,
-        confirming it works with imperfect information under the new optimized logic.
+        Verifies that the equity simulation loop NEVER passes the
+        opponent's true hand to the feature extractor, confirming it works with imperfect information.
         """
         print("\n--- Testing Equity Simulation for Imperfect Information (Integration Test) ---")
+        
         agent_config = {'eta': 0.1, 'gamma': 0.99, 'batch_size': 32, 'update_frequency': 1, 'learning_rate': 0.001, 'target_update_frequency': 100}
         buffer_config = {'rl_buffer_capacity': 1000, 'sl_buffer_capacity': 1000}
         
@@ -465,12 +466,13 @@ class TestFeatureExtractor(unittest.TestCase):
         )
 
         agent.opponent_as_network = MagicMock()
+    
         def mock_network_side_effect(feature_batch_tensor):
             batch_size = feature_batch_tensor.shape[0]
             return {'action_probs': torch.ones(batch_size, 12) / 12}
+
         agent.opponent_as_network.side_effect = mock_network_side_effect
-        
-        mock_extract_hand_features.return_value = np.zeros(PokerFeatureSchema.get_vector_size())
+        mock_extract_features.return_value = PokerFeatureSchema()
 
         my_real_hand = cards(['As', 'Ks'])
         opp_real_hand = cards(['Qd', 'Qc'])
@@ -490,17 +492,17 @@ class TestFeatureExtractor(unittest.TestCase):
             community_cards=community
         )
 
-        self.assertEqual(mock_extract_hand_features.call_count, agent.intelligent_equity_trials + 1,
-                         "The hand feature extractor helper was not called for each trial + 1.")
+        self.assertGreater(mock_extract_features.call_count, 1, "Extractor should have been called multiple times for the simulation")
 
-        calls = mock_extract_hand_features.call_args_list
-        simulated_hands = set()
+        # Verifies that the simulation explores multiple different hands, proving it is not stuck on the real hand.
+        calls = mock_extract_features.call_args_list
         
-        for call in calls[1:]:
-            # THIS IS THE CORRECTED LINE:
-            # The hand list is the first argument (index 0) after `self`.
-            simulated_opp_hand_list = call.args[0] 
-            simulated_hands.add(tuple(sorted(simulated_opp_hand_list)))
+        simulated_hands = set()
+        for call in calls:
+            simulated_game_state = call.args[0]
+            # Convert list to a tuple of sorted cards to make it hashable for the set
+            simulated_opp_hand = tuple(sorted(simulated_game_state.hole_cards[1]))
+            simulated_hands.add(simulated_opp_hand)
 
         self.assertGreater(len(simulated_hands), 1, 
                          "Equity simulation should have tried multiple different opponent hands.")

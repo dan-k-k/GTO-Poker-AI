@@ -248,51 +248,46 @@ class TestNFSPAgent(unittest.TestCase):
         # Ensure the mock network was actually called
         self.agent.opponent_as_network.assert_called_once()
 
-    def test_intelligent_equity_generates_correct_opponent_schema_optimized(self):
+    def test_intelligent_equity_generates_correct_opponent_schema(self):
         """
         Verifies that the schema generated from the opponent's perspective
-        is correct under the new optimized logic.
+        inside the equity calculation is correct.
         """
         agent_seat_id = 0
         opp_seat_id = 1
         
         state_faced_by_opponent = _create_mock_state(
-            stage=2, community=[8, 16, 24, 28], pot=75, stacks=[175, 175],
-            current_bets=[25, 0], last_raiser=agent_seat_id,
-            dealer_pos=opp_seat_id, to_move=opp_seat_id
+            stage=2,
+            community=[8, 16, 24, 28],
+            pot=75,
+            stacks=[175, 175],
+            current_bets=[25, 0],
+            last_raiser=agent_seat_id,
+            dealer_pos=opp_seat_id,
+            to_move=opp_seat_id
         )
 
-        self.agent.opponent_as_network = MagicMock(return_value={'action_probs': torch.rand(1, len(ACTION_MAP))})
+        self.agent.opponent_as_network = MagicMock(return_value={
+            'action_probs': torch.rand(1, len(ACTION_MAP))
+        })
         self.agent.last_opp_state_before_action = state_faced_by_opponent
+        
         self.agent.last_opp_action_index = 3 
-        simulated_opp_hand = [4, 12] # A club, 4 diamond -> gives flush on board
-        simulated_river_card = [40]  # King of spades
 
-        # --- CORRECTED MOCK ---
-        # This mock now intelligently returns the right number of cards.
-        def mock_choice_side_effect(deck, size, replace):
-            if size == 2: # This is for the opponent's hole cards
-                return np.array(simulated_opp_hand)
-            elif size == 1: # This is for the river card runout
-                return np.array(simulated_river_card)
-            return np.random.choice(deck, size=size, replace=replace) # Fallback
+        simulated_opp_hand = [4, 12]
 
-        # --- SPY SETUP to capture schemas before they are vectorized ---
-        captured_base_schema = None
-        captured_hand_schema = None
-        original_to_vector = PokerFeatureSchema.to_vector
+        captured_schema = None
+        
+        original_extract = FeatureExtractor.extract_features
+        def spy_on_extraction(self_extractor, state_obj, agent=None, skip_random_equity=False):
+            nonlocal captured_schema
+            schema = original_extract(self_extractor, state_obj, agent, skip_random_equity)
+            if captured_schema is None:
+                captured_schema = schema
+            return schema
 
-        def spy_on_to_vector(schema_instance):
-            nonlocal captured_base_schema, captured_hand_schema
-            if captured_base_schema is None:
-                captured_base_schema = schema_instance
-            elif captured_hand_schema is None:
-                captured_hand_schema = schema_instance
-            
-            return original_to_vector.__get__(schema_instance, PokerFeatureSchema)()
-
-        with patch('app.poker_feature_schema.PokerFeatureSchema.to_vector', new=spy_on_to_vector), \
-             patch('numpy.random.choice', side_effect=mock_choice_side_effect):
+        with patch('app.feature_extractor.FeatureExtractor.extract_features', new=spy_on_extraction), \
+             patch('numpy.random.permutation', return_value=simulated_opp_hand):
             
             self.agent.intelligent_equity_trials = 1
             self.agent._calculate_intelligent_equity(
@@ -300,19 +295,18 @@ class TestNFSPAgent(unittest.TestCase):
                 community_cards=state_faced_by_opponent.community
             )
 
-        # --- ASSERTIONS ---
-        self.assertIsNotNone(captured_base_schema, "Spy did not capture the base feature schema.")
-        self.assertIsNotNone(captured_hand_schema, "Spy did not capture the hand-specific feature schema.")
+        self.assertIsNotNone(captured_schema, "The spy did not capture the feature schema.")
 
-        self.assertEqual(captured_base_schema.dynamic.player_has_initiative, 0.0, "Opponent is facing a bet, so they don't have initiative.")
+        self.assertEqual(captured_schema.hand.is_button, 1.0, "Opponent should be the button.")
+        self.assertEqual(captured_schema.dynamic.player_has_initiative, 0.0, "Opponent is facing a bet, so they don't have initiative.")
+        
         amount_to_call = 25
         pot_before_call = 75
         final_pot = pot_before_call + amount_to_call
         expected_pot_odds = amount_to_call / final_pot
-        self.assertAlmostEqual(captured_base_schema.dynamic.pot_odds, expected_pot_odds, places=4)
+        self.assertAlmostEqual(captured_schema.dynamic.pot_odds, expected_pot_odds, places=4)
         
-        self.assertEqual(captured_hand_schema.hand.is_button, 1.0, "Opponent should be the button.")
-        self.assertEqual(captured_hand_schema.turn_cards.made_hand_rank_flush, 1.0, "Schema should detect the opponent's simulated flush.")
+        self.assertEqual(captured_schema.turn_cards.made_hand_rank_flush, 1.0, "Schema should detect the opponent's simulated flush.")
 
     def _set_agent_mid_hand_state(self):
         """Helper to put the agent in a state as if it's mid-hand."""

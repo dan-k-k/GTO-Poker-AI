@@ -96,7 +96,18 @@ class TestTrainingPipeline(unittest.TestCase):
                         "No '_best.pt' model files were saved after evaluation.")
         self.assertTrue(any(f.endswith('_latest.pt') for f in saved_files),
                         "No '_latest.pt' model files were saved after evaluation.")
+        
+        # === Buffers ===
+        buffers_dir = os.path.join(output_dir, "buffers")
+        self.assertTrue(os.path.isdir(buffers_dir), "Buffers directory was not created.")
 
+        # Check that buffer files were created for each agent (assuming 2 agents)
+        for i in range(2):
+            rl_buffer_path = os.path.join(buffers_dir, f"nfsp_agent{i}_rl_buffer.pkl")
+            sl_buffer_path = os.path.join(buffers_dir, f"nfsp_agent{i}_sl_buffer.pkl")
+            self.assertTrue(os.path.isfile(rl_buffer_path), f"RL buffer for agent {i} was not created.")
+            self.assertTrue(os.path.isfile(sl_buffer_path), f"SL buffer for agent {i} was not created.")
 
 if __name__ == '__main__':
     unittest.main()
+
