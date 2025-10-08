@@ -4,6 +4,7 @@ This project is a Python-based implementation of a Texas Hold'em poker bot that 
 
 The agent learns by playing against itself, using a combination of Reinforcement Learning (for finding the best response) and Supervised Learning (for building an average strategy).
 
+*GIF loading*
 ![Poker Live Demo](images/Pokerexamplelog2.gif)
 
 ###### 1. Clone the Repository
