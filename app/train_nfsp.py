@@ -1,7 +1,7 @@
 # app/train_nfsp.py
 # python -m app.train_nfsp
-# python -m cProfile -o profile_output.pstats app/train_nfsp.py
-# snakeviz profile_output.pstats
+# python -m cProfile -o training.pstats app/train_nfsp.py
+# snakeviz training.pstats
 import os
 import torch
 import numpy as np
