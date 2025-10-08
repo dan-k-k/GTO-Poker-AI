@@ -1,0 +1,20 @@
+# Python-specific 
+__pycache__/
+*.pyc
+
+# Virtual environments
+.venv/
+.env/
+
+# Training and output data
+training_output/
+flask_session/
+app/archive/
+
+# Editor and IDE-specific files
+.claude/
+.vscode/
+
+# Other 
+profile_output.pstats
+
