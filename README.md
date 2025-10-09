@@ -8,7 +8,7 @@ The agent intelligently predicts its opponent's range by using its opponent's tr
 
 
 ##### Example hand_history.log
-![Poker Live Demo](images/Pokerexamplelog5.gif)
+![Poker Live Demo](images/Pokerexamplelog5-2.gif)
 
 ###### 1. Clone the Repository
 ```bash
