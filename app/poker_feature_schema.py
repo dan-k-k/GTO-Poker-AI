@@ -7,7 +7,7 @@ from dataclasses import dataclass, fields, field
 
 @dataclass
 class BettingRoundFeatures:
-    """A summary of betting actions for a single street."""
+    """A summary of betting actions for current and previous streets."""
     my_bets_opened: float = 0.0      # How many times we made the FIRST bet in this round
     my_raises_made: float = 0.0      # How many times we raised over another bet this round
     opp_bets_opened: float = 0.0     # How many times the opponent opened this round
@@ -106,7 +106,7 @@ class PokerFeatureSchema:
     
 # -------------------------------------------------------------------------
 
-    # Ugly but fast. 126 features 08/10/2025
+    # 126 features 08/10/2025
     def to_vector(self) -> np.ndarray:
         """Flattens the entire nested schema into a 1D NumPy array directly."""
         vector_parts = [

@@ -8,8 +8,8 @@
 - Counter for the number of episodes ran since having to start from scratch
   
 ## Long-term Goals
-- An exploitative layer that tracks opponent tendencies (higher priority)
-- Support for > 2 players per table
-- Done
+- An exploitative layer that tracks opponent tendencies
+- Support for > 2 players per table (more expressive features needed, e.g. blocker ranks)
 
 ## Current Issues
+
