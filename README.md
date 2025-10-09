@@ -1,6 +1,6 @@
-## GTO Poker Bot using Neural Fictitious Self-Play
+## GTO Poker Agent using Neural Fictitious Self-Play
 
-This project is a Python-based implementation of a Texas Hold'em poker bot that approximates a Game Theory Optimal strategy heads-up (two-player).
+This project is a Python-based implementation of a Texas Hold'em poker agent that approximates a Game Theory Optimal strategy heads-up (two-player).
 
 The agent learns by playing against itself, using a combination of Reinforcement Learning (for finding the best response) and Supervised Learning (for building an average strategy).
 
