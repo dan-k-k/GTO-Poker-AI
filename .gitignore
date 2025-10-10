@@ -16,6 +16,7 @@ app/archive/
 # Editor and IDE-specific files
 .claude/
 .vscode/
+.DS_Store
 
 # Other 
 profile_output.pstats
