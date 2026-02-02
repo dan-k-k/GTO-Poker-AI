@@ -1,0 +1,393 @@
+<!-- dashboard.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Poker Bot Decision Support System</title>
+    <style>
+        :root { 
+            --bg: #1e1e1e; 
+            --panel: #2d2d2d; 
+            --accent: #007acc; 
+            --text: #e0e0e0; 
+            --danger: #d9534f; 
+            --success: #5cb85c; 
+            --highlight: #ffd700;
+        }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); padding: 20px; display: flex; justify-content: center; }
+        
+        .container { display: flex; gap: 20px; max-width: 1400px; width: 100%; }
+        .col { flex: 1; display: flex; flex-direction: column; gap: 20px; }
+        .panel { background: var(--panel); padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); border: 1px solid #333; }
+        
+        h2 { border-bottom: 2px solid var(--accent); padding-bottom: 10px; margin-top: 0; font-size: 1.2em; }
+        h4 { margin: 15px 0 5px; color: #888; text-transform: uppercase; font-size: 0.75em; letter-spacing: 1px; }
+        label { display: block; margin: 5px 0; font-weight: bold; font-size: 0.9em; color: #ccc; }
+        
+        .builder-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px; }
+        
+        .control-group { 
+            background: #333; padding: 15px; border-radius: 8px; border: 2px solid transparent; 
+            transition: all 0.3s ease; opacity: 0.6;
+        }
+        
+        .control-group.active-turn { 
+            border-color: var(--success); 
+            background: #3a4a3a; 
+            opacity: 1;
+            box-shadow: 0 0 15px rgba(92, 184, 92, 0.2);
+            transform: scale(1.02);
+        }
+
+        .btn-group { display: flex; gap: 5px; margin-top: 5px; }
+        input, textarea { width: 100%; padding: 8px; background: #222; border: 1px solid #444; color: white; border-radius: 4px; font-family: monospace; }
+        textarea { height: 150px; font-size: 0.8em; }
+
+        button { background: var(--accent); color: white; border: none; padding: 10px; font-weight: bold; cursor: pointer; border-radius: 4px; transition: background 0.2s; }
+        button:hover { background: #005f9e; }
+        button.secondary { background: #444; }
+        button.secondary:hover { background: #555; }
+        button.action-btn { flex: 1; font-size: 0.8em; padding: 8px 0; }
+
+        .table-visual {
+            background: #153e20; border-radius: 12px; padding: 20px; text-align: center; border: 4px solid #3e2723; margin-bottom: 20px;
+        }
+        .pot-display { font-size: 1.2em; font-weight: bold; color: #ffd700; margin-bottom: 10px; }
+        .cards-container { display: flex; justify-content: center; gap: 10px; min-height: 60px; }
+        .card-box { 
+            background: white; color: black; width: 40px; height: 56px; border-radius: 4px; 
+            display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.1em;
+        }
+        .card-box.red { color: #d00; }
+
+        .log-container { background: #111; padding: 10px; border-radius: 4px; height: 300px; overflow-y: auto; font-family: monospace; font-size: 0.9em; border: 1px solid #333; }
+        .log-entry { padding: 4px 0; border-bottom: 1px solid #222; }
+        .log-street { color: var(--highlight); font-weight: bold; margin-top: 10px; border-bottom: 1px solid #444; padding-bottom: 2px; }
+        .log-p0 { color: #88ccff; }
+        .log-p1 { color: #ff8888; }
+        
+        #result-box { display: none; border-left: 5px solid var(--accent); padding-left: 15px; margin-top: 20px; }
+        .big-action { font-size: 2.5em; text-align: center; color: var(--success); margin: 15px 0; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="col" style="flex: 1.2;">
+        <div class="panel">
+            <h2>1. Game Controls</h2>
+            
+            <div class="builder-controls">
+                <div id="p0-group" class="control-group active-turn">
+                    <label style="color: #88ccff;">PLAYER 0 (Seat 0)</label>
+                    <div style="font-size:0.8em; margin-bottom:5px;">Stack: <span id="p0-stack">199</span></div>
+                    
+                    <div class="btn-group">
+                        <button class="secondary action-btn" onclick="addHistory(0, 0, 0)">Fold</button>
+                        <button class="secondary action-btn" onclick="addHistory(0, 1, null)">Check/Call</button>
+                    </div>
+                    <div style="margin-top:5px; display:flex; gap:5px;">
+                        <input type="number" id="p0-amt" placeholder="Raise To" style="width: 70px;">
+                        <button class="secondary action-btn" onclick="addHistory(0, 2, document.getElementById('p0-amt').value)">Bet/Raise</button>
+                    </div>
+                </div>
+
+                <div id="p1-group" class="control-group">
+                    <label style="color: #ff8888;">PLAYER 1 (Seat 1)</label>
+                    <div style="font-size:0.8em; margin-bottom:5px;">Stack: <span id="p1-stack">198</span></div>
+
+                    <div class="btn-group">
+                        <button class="secondary action-btn" onclick="addHistory(1, 0, 0)">Fold</button>
+                        <button class="secondary action-btn" onclick="addHistory(1, 1, null)">Check/Call</button>
+                    </div>
+                    <div style="margin-top:5px; display:flex; gap:5px;">
+                        <input type="number" id="p1-amt" placeholder="Raise To" style="width: 70px;">
+                        <button class="secondary action-btn" onclick="addHistory(1, 2, document.getElementById('p1-amt').value)">Bet/Raise</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="btn-group">
+                <button class="secondary" onclick="nextStreet()">Next Street (Deal)</button>
+                <button class="secondary" style="background: var(--danger);" onclick="resetBuilder()">Reset Hand</button>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>2. Generated Request (JSON)</h2>
+            <textarea id="jsonInput"></textarea>
+            <button onclick="getRecommendation()" style="margin-top:10px;">🚀 Ask Bot (Run Inference)</button>
+        </div>
+    </div>
+
+    <div class="col">
+        <div class="panel">
+            <h2>3. Table Visual</h2>
+            <div class="table-visual">
+                <div class="pot-display">POT: <span id="visual-pot">3</span></div>
+                <div class="cards-container" id="visual-board"></div>
+            </div>
+
+            <h4>Hand History Log</h4>
+            <div class="log-container" id="game-log"></div>
+        </div>
+
+        <div class="panel">
+            <h2>4. AI Suggestion</h2>
+            <div id="loading" style="display:none; text-align: center; padding: 20px; color: var(--accent);">thinking...</div>
+            <div id="result-box">
+                <div class="stat-row">
+                    <span>Suggested Action:</span>
+                    <strong style="color: #aaa">For <span id="ai-player-target">-</span></strong>
+                </div>
+                <div class="big-action" id="action-text">WAITING...</div>
+                <div class="stat-row">
+                    <span>Raise To:</span>
+                    <strong id="amount-text">-</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let builderState = {
+        pot: 3, 
+        initial_stacks: [200, 200],
+        stacks: [199, 198], 
+        current_bets: [1, 2],
+        stage: 0,
+        past_actions: [],
+        dealer_id: 0,
+        hole_cards: [["Ah", "Kd"], ["Qs", "Js"]], 
+        deck: ["2h", "7s", "Td", "Ks", "Ac"], 
+        community_cards: []
+    };
+
+    // --- Core Logic ---
+
+    function getToMove() {
+        if (builderState.past_actions.length === 0) return 0;
+        const lastActor = builderState.past_actions[builderState.past_actions.length - 1].seat_id;
+        return 1 - lastActor;
+    }
+
+    function addHistory(seat, actionType, inputTotal) {
+        // 1. Calculate how much more chips the player puts in (Delta)
+        let amountAdded = 0;
+        
+        if (actionType === 0) {
+            // Fold
+            amountAdded = 0;
+        } 
+        else if (actionType === 1) {
+            // Check/Call: Match the highest current bet
+            const highestBet = Math.max(...builderState.current_bets);
+            const myCurrent = builderState.current_bets[seat];
+            amountAdded = highestBet - myCurrent;
+        } 
+        else if (actionType === 2) {
+            // Bet/Raise: User inputs "Raise To". Delta = Total - MyCurrent
+            const targetTotal = parseInt(inputTotal);
+            if (!targetTotal || targetTotal < builderState.current_bets[seat]) {
+                alert("Invalid Raise Amount: Must be greater than your current bet.");
+                return;
+            }
+            amountAdded = targetTotal - builderState.current_bets[seat];
+        }
+
+        // 2. Validate user has enough chips
+        if (amountAdded > builderState.stacks[seat]) {
+            alert("Not enough chips! Going All-in instead.");
+            amountAdded = builderState.stacks[seat];
+        }
+
+        // 3. Update State
+        builderState.stacks[seat] -= amountAdded;
+        builderState.current_bets[seat] += amountAdded;
+        builderState.pot += amountAdded;
+
+        // 4. Log Action
+        builderState.past_actions.push({
+            seat_id: seat,
+            stage: builderState.stage,
+            action_type: actionType,
+            amount_added: amountAdded
+        });
+
+        renderState();
+    }
+
+    function nextStreet() {
+        if (builderState.stage >= 3) return;
+        builderState.stage += 1;
+        builderState.current_bets = [0, 0]; // Bets reset per street
+        
+        if (builderState.stage === 1) builderState.community_cards = builderState.deck.slice(0,3);
+        if (builderState.stage === 2) builderState.community_cards = builderState.deck.slice(0,4);
+        if (builderState.stage === 3) builderState.community_cards = builderState.deck.slice(0,5);
+        
+        renderState();
+    }
+
+    function resetBuilder() {
+        builderState = {
+            pot: 3,
+            initial_stacks: [200, 200],
+            stacks: [199, 198],
+            current_bets: [1, 2],
+            stage: 0,
+            past_actions: [],
+            dealer_id: 0,
+            hole_cards: [["Ah", "Kd"], ["Qs", "Js"]],
+            deck: ["2h", "7s", "Td", "Ks", "Ac"], 
+            community_cards: []
+        };
+        renderState();
+    }
+
+    // --- Rendering ---
+
+    function renderState() {
+        // Update JSON View
+        const json = {
+            pot: builderState.pot,
+            current_bets: builderState.current_bets,
+            stacks: builderState.stacks,
+            initial_stacks: builderState.initial_stacks,
+            hole_cards: builderState.hole_cards,
+            community_cards: builderState.community_cards,
+            dealer_id: builderState.dealer_id,
+            to_move: getToMove(),
+            stage: builderState.stage,
+            past_actions: builderState.past_actions,
+            legal_actions: [0, 1, 2]
+        };
+        document.getElementById('jsonInput').value = JSON.stringify(json, null, 2);
+
+        // Update UI
+        const toMove = getToMove();
+        document.getElementById('p0-group').className = `control-group ${toMove===0 ? 'active-turn' : ''}`;
+        document.getElementById('p1-group').className = `control-group ${toMove===1 ? 'active-turn' : ''}`;
+        document.getElementById('p0-stack').innerText = builderState.stacks[0];
+        document.getElementById('p1-stack').innerText = builderState.stacks[1];
+        document.getElementById('visual-pot').innerText = builderState.pot;
+
+        renderBoard();
+        renderLog();
+    }
+
+    function renderBoard() {
+        const boardDiv = document.getElementById('visual-board');
+        boardDiv.innerHTML = builderState.community_cards.length ? '' : '<span style="color:#aaa; font-size:0.8em; align-self:center;">Preflop</span>';
+        builderState.community_cards.forEach(c => {
+            const isRed = (c[1] === 'd' || c[1] === 'h');
+            const icon = {'d':'♦','h':'♥','s':'♠','c':'♣'}[c[1]];
+            const el = document.createElement('div');
+            el.className = `card-box ${isRed ? 'red' : ''}`;
+            el.innerText = c[0] + icon;
+            boardDiv.appendChild(el);
+        });
+    }
+
+    function renderLog() {
+        const logDiv = document.getElementById('game-log');
+        logDiv.innerHTML = '';
+        addLogLine('Game Start: Blinds posted (1/2)', 'gray');
+
+        // Replay Simulation
+        // Initialize with blinds for safety, but the loop handles the reset
+        let simCurrentBets = [1, 2]; 
+        let currentStageProcessed = -1;
+
+        builderState.past_actions.forEach(act => {
+            // New Street Detection
+            if (act.stage > currentStageProcessed) {
+                const names = ["PREFLOP", "FLOP", "TURN", "RIVER"];
+                const cards = [
+                    "", 
+                    builderState.deck.slice(0,3).join(' '), 
+                    builderState.deck[3], 
+                    builderState.deck[4]
+                ][act.stage];
+                
+                addLogLine(`--- ${names[act.stage]} ${cards ? '('+cards+')' : ''} ---`, 'log-street');
+                currentStageProcessed = act.stage;
+                
+                // If it's Preflop (Stage 0), start with Blinds [1, 2]. 
+                // Otherwise (Flop/Turn/River), reset to [0, 0].
+                if (act.stage === 0) {
+                    simCurrentBets = [1, 2];
+                } else {
+                    simCurrentBets = [0, 0]; 
+                }
+            }
+
+            // Calculate "Raise To" total
+            simCurrentBets[act.seat_id] += act.amount_added;
+            const totalBet = simCurrentBets[act.seat_id];
+            
+            // Format Text
+            const pName = `P${act.seat_id}`;
+            const pClass = act.seat_id === 0 ? 'log-p0' : 'log-p1';
+            let actionText = "";
+
+            if (act.action_type === 0) actionText = "Folds";
+            else if (act.action_type === 1) actionText = act.amount_added === 0 ? "Checks" : `Calls ${act.amount_added}`;
+            else if (act.action_type === 2) actionText = `Raises TO ${totalBet}`;
+
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span class="${pClass}">${pName}</span> ${actionText}`;
+            logDiv.appendChild(entry);
+        });
+
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    function addLogLine(text, cssClass) {
+        const div = document.createElement('div');
+        div.className = cssClass || 'log-entry';
+        div.innerText = text;
+        document.getElementById('game-log').appendChild(div);
+    }
+
+    async function getRecommendation() {
+        const inputData = document.getElementById('jsonInput').value;
+        const resultBox = document.getElementById('result-box');
+        const loading = document.getElementById('loading');
+        
+        resultBox.style.display = 'none';
+        loading.style.display = 'block';
+
+        try {
+            const response = await fetch('http://localhost:8000/get_optimal_action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: inputData
+            });
+            const data = await response.json();
+            
+            loading.style.display = 'none';
+            resultBox.style.display = 'block';
+            
+            const req = JSON.parse(inputData);
+            document.getElementById('ai-player-target').innerText = "Player " + req.to_move;
+            
+            if (data.action_type) {
+                document.getElementById('action-text').innerText = data.action_type.toUpperCase();
+                document.getElementById('amount-text').innerText = data.amount !== null ? data.amount : "N/A";
+            } else {
+                document.getElementById('action-text').innerText = "ERROR";
+            }
+        } catch (error) {
+            loading.style.display = 'none';
+            alert("API Error. Ensure server is running.");
+        }
+    }
+
+    renderState();
+</script>
+</body>
+</html>
+

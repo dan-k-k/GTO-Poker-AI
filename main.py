@@ -1,4 +1,4 @@
-# main.py (Corrected Version)
+# main.py
 
 import os
 import base64

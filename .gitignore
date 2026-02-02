@@ -1,3 +1,5 @@
+# .gitignore
+
 # Python-specific 
 __pycache__/
 *.pyc
@@ -8,10 +10,15 @@ __pycache__/
 .env/
 
 # Training and output data
-training_output/
+#training_output/
+training_output/buffers/
 training_output_backup/
 flask_session/
 app/archive/
+*.pkl
+*.log
+# ALLOW trained models
+!training_output/models/*.pt 
 
 # Editor and IDE-specific files
 .claude/
