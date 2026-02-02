@@ -1,6 +1,6 @@
 # run_tests.yml
 
-name: Poker Bot CI
+name: Poker AI CI
 
 # Trigger the workflow on push or pull request to the main branch
 on:
