@@ -11,5 +11,8 @@
 - An exploitative layer that tracks opponent tendencies
 - Support for > 2 players per table (more expressive features needed, e.g. blocker ranks)
 
-## Current Issues
+## Current Focus
+- Add a database to log previous hands and lookup.
+- Add CI/CD.
+- Containerise?
 

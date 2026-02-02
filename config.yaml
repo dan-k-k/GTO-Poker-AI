@@ -26,5 +26,5 @@ simulations:
 
 # NEW SECTION
 logging:
-  dump_features: false                # for the hand log to debug
+  dump_features: true                # for the hand log to debug
 
