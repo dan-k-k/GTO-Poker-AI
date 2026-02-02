@@ -10,15 +10,14 @@ __pycache__/
 .env/
 
 # Training and output data
-#training_output/
-training_output/buffers/
+!training_output/
+!training_output/models/*.pt
 training_output_backup/
 flask_session/
 app/archive/
 *.pkl
 *.log
-# ALLOW trained models
-!training_output/models/*.pt 
+*.jsonl 
 
 # Editor and IDE-specific files
 .claude/
