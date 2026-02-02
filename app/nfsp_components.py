@@ -116,16 +116,23 @@ class NFSPAgent(NeuralNetworkAgent):
         self.last_opp_state_before_action: Optional[Dict] = None
         self.last_opp_action_index: Optional[int] = None
         
+        self.use_average_strategy_this_hand = False
+        
     def compute_action(self, state: GameState) -> Tuple[int, Optional[int], Dict, str, 'PokerFeatureSchema']:
         features_schema = self.feature_extractor.extract_features(state, self)
         features_vector = features_schema.to_vector()
 
-        use_average_strategy = random.random() < self.eta
+        # === FIX: Use the flag determined in new_hand() ===
+        # OLD: use_average_strategy = random.random() < self.eta
+        use_average_strategy = self.use_average_strategy_this_hand
+        
         network_to_use = self.as_network if use_average_strategy else self.br_network
         policy_name = "AS" if use_average_strategy else "BR"
         
         action_type, amount, action_index, predictions = self._get_action_from_network(features_vector, network_to_use, state)
         
+        # Standard NFSP: If we are playing Best Response (RL), we add the data
+        # to the Supervised Learning buffer so the AS network can learn from it.
         if not use_average_strategy:
             self.sl_buffer.push(features_vector, action_index)
             
@@ -258,6 +265,12 @@ class NFSPAgent(NeuralNetworkAgent):
 
         self.last_opp_state_before_action = None
         self.last_opp_action_index = None
+        
+        # === FIX: Decide Policy for the Entire Hand ===
+        # We sample once per hand. If True, we play the whole hand using 
+        # the Average Strategy (approximating Nash). If False, we play 
+        # Best Response (exploitative RL).
+        self.use_average_strategy_this_hand = random.random() < self.eta
 
     def _get_current_street_schema(self, schema: PokerFeatureSchema, stage: int) -> StreetFeatures:
         """A helper to get the feature object for the current street."""

@@ -373,7 +373,11 @@ class TestNFSPAgent(unittest.TestCase):
         """
         mock_state = _create_mock_state()
         
+        # --- Case 1: Force Average Strategy (eta = 1.0) ---
         self.agent.eta = 1.0
+        # CRITICAL FIX: The policy is decided in new_hand(). 
+        # We must call it so the agent re-evaluates 'use_average_strategy_this_hand'
+        self.agent.new_hand() 
         
         with patch.object(self.agent, 'as_network', wraps=self.agent.as_network) as spy_as_net, \
              patch.object(self.agent, 'br_network', wraps=self.agent.br_network) as spy_br_net:
@@ -383,7 +387,10 @@ class TestNFSPAgent(unittest.TestCase):
             spy_as_net.assert_called_once()
             spy_br_net.assert_not_called()
 
+        # --- Case 2: Force Best Response (eta = 0.0) ---
         self.agent.eta = 0.0
+        # CRITICAL FIX: Call new_hand again to apply the new eta
+        self.agent.new_hand()
         
         with patch.object(self.agent, 'as_network', wraps=self.agent.as_network) as spy_as_net, \
              patch.object(self.agent, 'br_network', wraps=self.agent.br_network) as spy_br_net:

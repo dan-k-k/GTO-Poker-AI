@@ -13,6 +13,7 @@ from app.TexasHoldemEnv import TexasHoldemEnv
 from app.nfsp_components import NFSPAgent
 from app.poker_agents import RandomBot
 from app._hand_history_logger import HandHistoryLogger
+from app.live_plotter import LivePlotter
 
 class NFSPTrainer:
     """Main training loop for Neural Fictitious Self-Play."""
@@ -67,8 +68,19 @@ class NFSPTrainer:
 
         # --- Initialize the logger ---
         log_path = os.path.join(self.output_dir, "hand_history.log")
-        self.logger = HandHistoryLogger(log_file=log_path, dump_features=config['logging']['dump_features'])
+        data_path = os.path.join(self.output_dir, "hand_data.jsonl")
+        plot_path = os.path.join(self.output_dir, "training_dashboard.png") # New image file
+        self.logger = HandHistoryLogger(log_file=log_path, data_file=data_path, dump_features=config['logging']['dump_features'])
         self.hand_counter = 0
+        if os.path.exists(data_path):
+            try:
+                # Count lines in the file to determine current hand number
+                with open(data_path, 'r') as f:
+                    self.hand_counter = sum(1 for _ in f)
+                print(f"Resuming stats from Hand {self.hand_counter}...")
+            except Exception:
+                print("Could not read existing data, starting counter at 0.")
+        self.plotter = LivePlotter(data_file=data_path, plot_file=plot_path, window_size=1000)
         
         # === Attempt to load latest models to resume training ===
         self._load_models(suffix="_latest")
@@ -111,7 +123,6 @@ class NFSPTrainer:
             print(f"\nTraining completed or interrupted after {self.stats['training_time']:.2f} seconds.\nContinue training with python -m app.train_nfsp.")
             
             # Final save of stats and buffers
-            self._save_stats()
             self._save_buffers()
         
     def _run_episode(self, episode: int) -> List[float]:
@@ -176,6 +187,19 @@ class NFSPTrainer:
             agent.observe_showdown(showdown_state)
 
         self.logger.log_end_hand(episode_rewards, state)
+
+        # Capture the data returned by the logger
+        hand_data = self.logger.log_end_hand(episode_rewards, state)
+        
+        # Update the live plotter memory
+        self.plotter.update(hand_data)
+        
+        # Update the actual image file periodically (e.g., every 50 hands)
+        # Doing this every hand is too slow (IO heavy)
+        if self.hand_counter % 50 == 0:
+            self.plotter.save_plot()
+            
+        return episode_rewards
         
         return episode_rewards
         
@@ -289,14 +313,7 @@ class NFSPTrainer:
             br_path = os.path.join(save_dir, f"nfsp_agent{i}_br{suffix}.pt")
             as_path = os.path.join(save_dir, f"nfsp_agent{i}_as{suffix}.pt")
             agent.save_models(br_path, as_path)
-        
-    def _save_stats(self):
-        """Save training statistics."""
-        # --- Use the main output directory for the stats file ---
-        stats_path = os.path.join(self.output_dir, "nfsp_training_stats.json")
-        with open(stats_path, "w") as f:
-            json.dump(self.stats, f, indent=2)
-            
+                    
 def main(config_path: str = "config.yaml"):
     """Main training function."""
     # 1. Load configuration from the YAML file path

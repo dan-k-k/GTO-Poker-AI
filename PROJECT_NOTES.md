@@ -15,4 +15,9 @@
 - Add a database to log previous hands and lookup.
 - Add CI/CD.
 - Containerise?
+- Decide if other intricate features have room to exist.
+- Discrete bet sizes.
+- Plots for metrics such as VPIP
+- Reservoir sampling for SL buffer.
+- Test in a live environment.
 

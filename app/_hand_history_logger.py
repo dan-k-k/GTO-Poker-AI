@@ -1,66 +1,83 @@
 # app/_hand_history_logger.py
 import logging
-import dataclasses 
+import json
+import dataclasses
+import numpy as np
+import os
 from app.poker_core import card_to_string, HandEvaluator
 from app.poker_agents import ACTION_MAP 
 
 class HandHistoryLogger:
-    def __init__(self, log_file='hand_history.log', dump_features: bool = False):
+    def __init__(self, log_file='hand_history.log', data_file='hand_data.jsonl', dump_features: bool = False):
+        # ... (Your init code remains the same) ...
         self.logger = logging.getLogger('hand_history')
         self.logger.setLevel(logging.INFO)
-        # Prevent logs from propagating to the root logger
         self.logger.propagate = False
-        
-        # Remove any existing handlers
         if self.logger.hasHandlers():
             self.logger.handlers.clear()
-
-        # Add a file handler
-        handler = logging.FileHandler(log_file, mode='w') # 'w' to overwrite on each run
-        formatter = logging.Formatter('%(message)s')
-        handler.setFormatter(formatter)
+        handler = logging.FileHandler(log_file, mode='a')
+        handler.setFormatter(logging.Formatter('%(message)s'))
         self.logger.addHandler(handler)
         
+        self.data_file = data_file
+        if not os.path.exists(self.data_file):
+            with open(self.data_file, 'w') as f:
+                pass
+
         self.evaluator = HandEvaluator()
-        # Store the on/off switch
         self.dump_features = dump_features
+        self.current_hand_data = {}
 
     def _format_cards(self, cards):
         return [card_to_string(c) for c in cards]
+    
+    def _make_serializable(self, obj):
+        if isinstance(obj, (np.integer, np.int64, np.int32)):
+            return int(obj)
+        if isinstance(obj, (np.floating, np.float32, np.float64)):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return obj
 
-    def _format_probs(self, probs_tensor):
-        probs = probs_tensor[0].numpy()
-        # FOLD is action 0, CALL is action 1, RAISES are 2-11
-        fold_prob = probs[0]
-        call_prob = probs[1]
-        raise_prob = sum(probs[2:])
-        return f"F:{fold_prob:.0%}, C:{call_prob:.0%}, R:{raise_prob:.0%}"
-
+    def _format_probs(self, probs):
+        if hasattr(probs, 'detach'):
+            probs = probs.detach().cpu().numpy()
+        elif hasattr(probs, 'numpy'):
+            probs = probs.numpy()
+        if hasattr(probs, 'shape') and len(probs.shape) > 1:
+            probs = probs.flatten()
+        return " ".join([f"{p:.2f}" for p in probs])
+    
     def log_start_hand(self, episode, hand_num, state):
         p0_cards = self._format_cards(state.hole_cards[0])
         p1_cards = self._format_cards(state.hole_cards[1])
         self.logger.info(f"[Hand {hand_num}] P0 dealt {p0_cards}. P1 dealt {p1_cards}.")
+        
+        self.current_hand_data = {
+            "episode": episode,
+            "hand_num": hand_num,
+            "p0_cards": p0_cards,
+            "p1_cards": p1_cards,
+            "btn_pos": state.dealer_pos,
+            "actions": [],
+            "rewards": [],
+            "winner": None
+        }
 
     def log_action(self, player_id, action, amount, state_before, predictions, policy_name, features_schema=None, last_rl_loss: float = 0.0):
-        # Identify who is who
+        # --- (Text Logging Logic) ---
         player_name = f"P{player_id}"
-
-        # Get hand info
         hole = self._format_cards(state_before.hole_cards[player_id])
         community = state_before.community
-
-        hand_type_name = "N/A" # Default value
         
-        # Case 1: Preflop (no community cards yet)
+        hand_type_name = "N/A"
         if not community:
             hole_cards = state_before.hole_cards[player_id]
             rank1 = hole_cards[0] // 4
             rank2 = hole_cards[1] // 4
-            if rank1 == rank2:
-                hand_type_name = "Pair"
-            else:
-                hand_type_name = "High Card"
-        # Case 2: Flop, Turn, and River
+            if rank1 == rank2: hand_type_name = "Pair"
+            else: hand_type_name = "High Card"
         else:
             hole_cards = state_before.hole_cards[player_id]
             rank = self.evaluator.best_hand_rank(hole_cards, community)
@@ -68,21 +85,16 @@ class HandHistoryLogger:
 
         features_str = ""
         if features_schema:
-            # Get intelligent hand strength (always dynamic)
             hs = features_schema.dynamic.hand_strength
-            
-            # Get the correct random strength for the current street
             stage = state_before.stage
             if stage == 0: rs = features_schema.preflop_cards.random_strength
             elif stage == 1: rs = features_schema.flop_cards.random_strength
             elif stage == 2: rs = features_schema.turn_cards.random_strength
             else: rs = features_schema.river_cards.random_strength
-            
             features_str = f"HS:{hs:.2f}, RS:{rs:.2f} | "
 
         stack_bb = state_before.stacks[player_id] / state_before.big_blind 
 
-        # AI-specific info (if available)
         if predictions:
             probs_str = self._format_probs(predictions['action_probs'])
             e_rew = predictions['state_values'][0].item()
@@ -97,7 +109,6 @@ class HandHistoryLogger:
 
         self.logger.info(log_line)
 
-        # Log the action itself
         action_str = ""
         if action == 0: 
             action_str = f"  {player_name} folds."
@@ -108,18 +119,66 @@ class HandHistoryLogger:
 
         self.logger.info(action_str)
 
+        # --- MERGED DATA LOGGING LOGIC ---
+        
+        # 1. Calculate Entropy first
+        entropy_val = None
+        if predictions and 'action_probs' in predictions:
+            probs = predictions['action_probs']
+            if hasattr(probs, 'detach'): probs = probs.detach().cpu().numpy()
+            elif hasattr(probs, 'numpy'): probs = probs.numpy()
+            
+            probs = np.ravel(probs)
+            # Entropy = -sum(p * log(p))
+            entropy_val = -np.sum(probs * np.log(probs + 1e-9))
+
+        # 2. Create the ONE dictionary
+        action_record = {
+            "player": player_id,
+            "street": state_before.stage, 
+            "action_type": action, 
+            "amount": self._make_serializable(amount) if amount else 0,
+            "policy": policy_name,
+            "pot_before": self._make_serializable(state_before.pot),
+            "stack_before": self._make_serializable(state_before.stacks[player_id]),
+            "is_aggressor": 1 if action == 2 else 0,
+            "entropy": float(entropy_val) if entropy_val is not None else None 
+        }
+        
+        # Optional: Save specific features
+        if features_schema:
+             action_record["hs"] = self._make_serializable(features_schema.dynamic.hand_strength)
+
+        # 3. Append ONCE
+        self.current_hand_data["actions"].append(action_record)
 
     def log_street(self, state):
+        # Text Log
         street_name = {1: "FLOP", 2: "TURN", 3: "RIVER"}.get(state.stage)
         cards = self._format_cards(state.community)
         pot = state.pot
         self.logger.info(f"- {street_name} {cards} (pot: {pot}):")
+        
+        # Data Log - store community cards as they appear
+        stage_key = {1: "flop", 2: "turn", 3: "river"}.get(state.stage)
+        if stage_key:
+             self.current_hand_data[f"{stage_key}_cards"] = cards
 
     # Log rewards for ALL players
     def log_end_hand(self, episode_rewards, state):
+        # 1. Text Log
         p0_reward = episode_rewards[0]
-        p_rew = p0_reward / state.big_blind # Reward in BB
+        p_rew = p0_reward / state.big_blind 
         self.logger.info(f"- HAND PROFIT: {p0_reward} chips (P_Rew: {p_rew:+.4f})\n")
+
+        # 2. Data Log Finalization
+        self.current_hand_data["rewards"] = [self._make_serializable(r) for r in episode_rewards]
+        self.current_hand_data["final_pot"] = self._make_serializable(state.pot)
+        
+        # Append line to JSONL file
+        with open(self.data_file, 'a') as f:
+            f.write(json.dumps(self.current_hand_data) + '\n')
+        return self.current_hand_data
 
     def log_feature_dump_if_needed(self, state, features_schema, predictions):
         """Checks if conditions are met to dump the feature schema and does so."""
@@ -133,7 +192,7 @@ class HandHistoryLogger:
 
         # 3. Check if it's the second player's turn to act on this street
         if features_schema and features_schema.dynamic.bet_faced_ratio > 0.0:
-            self.logger.info("  --- Feature Schema Dump (dump_features=True in config.yaml) ---")
+            self.logger.info("  --- Feature Schema Dump (dump_features: true in config.yaml) ---")
             # Pass `predictions` to the dumper method
             self._dump_schema_features(features_schema, predictions)
             self.logger.info("  ---------------------------------")

@@ -11,13 +11,13 @@ agent:
                         # eta can start around 0.3 in first ~200,000 episodes, but lower it to 0.05 later on.
   learning_rate: 0.001  # ! Can be sensitive to change late in training !
   gamma: 1.0          # Discount factor for future rewards - No need to change from 1.0 (for terminal reward only)
-  batch_size: 64
+  batch_size: 512
   update_frequency: 4
   target_update_frequency: 1000  
 
 buffers:
-  rl_buffer_capacity: 200000
-  sl_buffer_capacity: 400000
+  rl_buffer_capacity: 300000
+  sl_buffer_capacity: 600000
 
 # Simulation parameters for equity calculations
 simulations:
@@ -26,5 +26,5 @@ simulations:
 
 # NEW SECTION
 logging:
-  dump_features: true                # for the hand log to debug
+  dump_features: false                # for the hand log to debug
 

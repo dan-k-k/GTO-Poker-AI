@@ -82,12 +82,6 @@ class TestTrainingPipeline(unittest.TestCase):
         output_dir = "training_output"
         self.assertTrue(os.path.isdir(output_dir), "Main output directory was not created.")
 
-        stats_path = os.path.join(output_dir, "nfsp_training_stats.json")
-        self.assertTrue(os.path.isfile(stats_path), "Training stats file was not created.")
-        with open(stats_path, 'r') as f:
-            stats_data = json.load(f)
-            self.assertIn('episode_rewards', stats_data)
-
         log_path = os.path.join(output_dir, "hand_history.log")
         self.assertTrue(os.path.isfile(log_path), "Hand history log file was not created.")
 
