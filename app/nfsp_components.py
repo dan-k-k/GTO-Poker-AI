@@ -22,6 +22,7 @@ class ReplayBuffer:
         
     def push(self, state: np.ndarray, action: int, reward: float, next_state: np.ndarray, done: bool):
         """Store experience tuple."""
+        # Ensure data types are correct for PyTorch
         self.buffer.append((state, action, reward, next_state, done))
         
     def sample(self, batch_size: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -43,14 +44,23 @@ class ReplayBuffer:
         return len(self.buffer)
 
 class SLBuffer:
-    """Supervised Learning Buffer for Average Strategy (sliding window)."""
+    """Reservoir Buffer for Average Strategy."""
     
     def __init__(self, capacity: int):
-        self.buffer = deque(maxlen=capacity)
+        self.buffer = [] 
+        self.capacity = capacity
+        self.total_count = 0 
         
     def push(self, state: np.ndarray, action_index: int):
-        """Store state-action_index pair."""
-        self.buffer.append((state, action_index))
+        """Store state-action_index pair using Reservoir Sampling."""
+        if len(self.buffer) < self.capacity:
+            self.buffer.append((state, action_index))
+        else:
+            r = random.randint(0, self.total_count)
+            if r < self.capacity:
+                self.buffer[r] = (state, action_index)
+        
+        self.total_count += 1
         
     def sample(self, batch_size: int) -> Tuple[torch.Tensor, torch.LongTensor]:
         """Sample a batch of state-action pairs."""
@@ -70,17 +80,15 @@ class SLBuffer:
 class NFSPAgent(NeuralNetworkAgent):
     """
     Neural Fictitious Self-Play Agent.
-    Maintains two networks: Best Response (RL) and Average Strategy (SL).
+    Corrected to handle turn-based transitions propertly.
     """
     
     def __init__(self, seat_id: int, agent_config: Dict, buffer_config: Dict, 
                  random_equity_trials: int, intelligent_equity_trials: int):
         super().__init__(seat_id)
         
-        # Store the intelligent trials count for this agent
         self.intelligent_equity_trials = intelligent_equity_trials
 
-        # Replace the parent's feature extractor with one that uses random trials count
         self.feature_extractor = FeatureExtractor(
             seat_id=self.seat_id,
             random_equity_trials=random_equity_trials
@@ -110,64 +118,72 @@ class NFSPAgent(NeuralNetworkAgent):
         self.step_count = 0
         self.target_update_frequency = agent_config['target_update_frequency']
 
-        self.current_hand_trajectory = []
-
+        # === Opponent Modelling ===
         self.opponent_as_network: Optional[nn.Module] = None
         self.last_opp_state_before_action: Optional[Dict] = None
         self.last_opp_action_index: Optional[int] = None
         
         self.use_average_strategy_this_hand = False
+
+        # === PENDING EXPERIENCE STORE ===
+        # We store the state/action from the PREVIOUS turn here.
+        # We only push them to the buffer when we reach the NEXT turn (or showdown).
+        self.pending_state: Optional[np.ndarray] = None
+        self.pending_action: Optional[int] = None
+
         
     def compute_action(self, state: GameState) -> Tuple[int, Optional[int], Dict, str, 'PokerFeatureSchema']:
+        # 1. Extract CURRENT state features (S_t)
         features_schema = self.feature_extractor.extract_features(state, self)
-        features_vector = features_schema.to_vector()
+        current_features_vector = features_schema.to_vector()
 
-        # === FIX: Use the flag determined in new_hand() ===
-        # OLD: use_average_strategy = random.random() < self.eta
+        # 2. Check if we have a pending experience from the PREVIOUS turn (S_{t-1})
+        if self.pending_state is not None and self.pending_action is not None:
+            self.rl_buffer.push(
+                state=self.pending_state,
+                action=self.pending_action,
+                reward=0.0,              # Intermediate reward is 0
+                next_state=current_features_vector,
+                done=False
+            )
+            
+            # Trigger Learning Steps
+            self._attempt_learning_step()
+
+        # 3. Select New Action (A_t)
+        # Determine policy for this HAND (set in new_hand)
         use_average_strategy = self.use_average_strategy_this_hand
         
-        network_to_use = self.as_network if use_average_strategy else self.br_network
-        policy_name = "AS" if use_average_strategy else "BR"
+        if use_average_strategy:
+            action_type, amount, action_index, predictions, is_random = self._get_action_from_network(
+                features=current_features_vector, network=self.as_network, state=state, use_greedy=False)
+        else:
+            action_type, amount, action_index, predictions, is_random = self._get_action_from_network(
+                features=current_features_vector, network=self.br_network, state=state, use_greedy=True, epsilon=0.06)
         
-        action_type, amount, action_index, predictions = self._get_action_from_network(features_vector, network_to_use, state)
-        
-        # Standard NFSP: If we are playing Best Response (RL), we add the data
-        # to the Supervised Learning buffer so the AS network can learn from it.
-        if not use_average_strategy:
-            self.sl_buffer.push(features_vector, action_index)
+        # FIX: Only push to SL buffer if NOT exploring
+        if not use_average_strategy and not is_random:
+            self.sl_buffer.push(current_features_vector, action_index)
             
-        self.last_state = features_vector
-        self.last_action = action_index
+        self.pending_state = current_features_vector
+        self.pending_action = action_index
         
+        policy_name = "AS" if use_average_strategy else "BR"
         return action_type, amount, predictions, policy_name, features_schema
         
     def observe(self, player_action, player_id, state_before_action: GameState, next_state: GameState):
         """
-        Observe an action. If it's p0's action, store the experience tuple
-        in the current hand's trajectory.
+        Passive observation. 
+        We NO LONGER use this to record our own trajectory (that happens in compute_action).
+        We ONLY use this to update the feature extractor and track opponents.
         """
         action_taken, amount_put_in = player_action
-        # Update the feature extractor's betting history
+        
+        # 1. Update Betting History in Feature Extractor
         self.feature_extractor.update_betting_action(player_id, action_taken, state_before_action, state_before_action.stage)
 
-        # --- COLLECT EXPERIENCES ---
-        # Only process the experience for the agent that just acted
-        if player_id == self.seat_id:
-            if self.last_state is not None and self.last_action is not None:
-                # The "next_state" is the state we are in now.
-                current_features = self.feature_extractor.extract_features(next_state, self).to_vector() 
-                            
-                # Append the experience to the trajectory
-                self.current_hand_trajectory.append(
-                    (self.last_state, self.last_action, current_features)
-                )
-
-            # Clear last state/action to prepare for the next turn
-            self.last_state = None
-            self.last_action = None
-            
-        # --- Opponent tracking ---
-        elif player_id != self.seat_id:
+        # 2. Track Opponent for Intelligent Equity
+        if player_id != self.seat_id:
             opp_action_index = self._get_action_index_from_move(state_before_action, action_taken, amount_put_in)
             if opp_action_index is not None:
                 self.last_opp_state_before_action = state_before_action
@@ -175,65 +191,69 @@ class NFSPAgent(NeuralNetworkAgent):
             
     def observe_showdown(self, showdown_state):
         """
-        At the end of the hand, assign the final pot-winnings reward to ALL
-        experiences from the hand and push them to the replay buffer.
+        The hand is over. We must close the loop on the LAST action taken.
+        This provides the final reward (S_last -> S_terminal).
         """
-        # Calculate the single, final reward for the whole hand.
+        # Calculate the single, final reward.
         my_stack_before = showdown_state.get('stacks_before', {}).get(self.seat_id, 0)
         my_stack_after = showdown_state.get('stacks_after', {}).get(self.seat_id, 0)
-        final_reward = my_stack_after - my_stack_before
+        scaling_factor = 200.0 
+        raw_reward = my_stack_after - my_stack_before
+        final_reward = raw_reward / scaling_factor
 
-        # --- PROCESS THE ENTIRE TRAJECTORY ---
-        num_experiences = len(self.current_hand_trajectory)
-        if num_experiences == 0:
-            return # Agent took no actions this hand.
-
-        # Iterate through all saved experiences for this hand
-        for i, experience in enumerate(self.current_hand_trajectory):
-            state, action, next_state = experience
+        # If we have a pending action that hasn't been closed yet
+        if self.pending_state is not None and self.pending_action is not None:
             
-            # The hand is "done" only for the VERY LAST experience in the trajectory.
-            done = (i == num_experiences - 1)
+            dummy_terminal_state = np.zeros_like(self.pending_state)
 
-            # Push the experience to the buffer with the FINAL reward.
-            self.rl_buffer.push(state, action, final_reward, next_state, done)
+            self.rl_buffer.push(
+                state=self.pending_state,
+                action=self.pending_action,
+                reward=final_reward,     # THE REAL REWARD IS HERE
+                next_state=dummy_terminal_state,
+                done=True                # TERMINAL FLAG
+            )
             
-            # --- LEARNING CALLS MOVED HERE ---
-            # Increment step count and trigger learning after each push.
-            self.step_count += 1
-            if self.step_count % self.update_frequency == 0:
-                self.learn_rl()
-                self.learn_sl()
+            self._attempt_learning_step()
 
-        # Clear state variables (trajectory is cleared in new_hand)
-        self.last_state = None
-        self.last_action = None
+        # Clear pending variables
+        self.pending_state = None
+        self.pending_action = None
             
+    def _attempt_learning_step(self):
+        """Helper to check frequency and trigger learning."""
+        self.step_count += 1
+        if self.step_count % self.update_frequency == 0:
+            self.learn_rl()
+            self.learn_sl()
+
     def learn_rl(self):
         """Perform Double DQN learning step for Best Response network."""
-        # Buffer size check
         if len(self.rl_buffer) < self.batch_size:
             return
             
         states, actions, rewards, next_states, dones = self.rl_buffer.sample(self.batch_size)
         
-        # Get Q-values for the actions that were actually taken
+        # 1. Current Q(s, a)
         current_q_values = self.br_network(states)['q_values']
         current_q_values = torch.gather(current_q_values, 1, actions.unsqueeze(1)).squeeze(1)
         
-        # Double DQN: Use main network to select actions, target network to evaluate them
+        # 2. Target = r + gamma * max Q(s', a')
+        # Double DQN: Use Main Net to choose action, Target Net to evaluate value
         target_q_values = self.br_network.compute_double_dqn_target(
             next_states, rewards, dones, self.br_target_network, self.gamma
         )
         
-        # Loss is calculated on the Q-values
+        # 3. Loss
         loss = nn.MSELoss()(current_q_values, target_q_values)
         
         self.br_optimizer.zero_grad()
         loss.backward()
+        # Optional: Clip gradients to stabilize training
+        torch.nn.utils.clip_grad_norm_(self.br_network.parameters(), 1.0)
         self.br_optimizer.step()
         
-        # After optimizer.step(), check if it's time to update the target network
+        # 4. Sync Target Network
         if self.step_count % self.target_update_frequency == 0:
             self.br_target_network.load_state_dict(self.br_network.state_dict())
         
@@ -247,29 +267,25 @@ class NFSPAgent(NeuralNetworkAgent):
         predictions = self.as_network(states)
         action_logits = predictions['action_logits']
 
-        # The loss is just cross-entropy
         loss = nn.CrossEntropyLoss()(action_logits, action_indices)
 
         self.as_optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.as_network.parameters(), 1.0)
         self.as_optimizer.step()
         
     def new_hand(self):
-        """Reset for new hand, including opponent tracking and trajectory."""
+        """Reset for new hand."""
         super().new_hand()
-        self.last_state = None
-        self.last_action = None
-
-        # === RESET THE TRAJECTORY ===
-        self.current_hand_trajectory = [] 
+        
+        # Reset Pending State (Just in case observe_showdown wasn't called, though it should be)
+        self.pending_state = None
+        self.pending_action = None
 
         self.last_opp_state_before_action = None
         self.last_opp_action_index = None
         
-        # === FIX: Decide Policy for the Entire Hand ===
-        # We sample once per hand. If True, we play the whole hand using 
-        # the Average Strategy (approximating Nash). If False, we play 
-        # Best Response (exploitative RL).
+        # Decide Policy for the Entire Hand
         self.use_average_strategy_this_hand = random.random() < self.eta
 
     def _get_current_street_schema(self, schema: PokerFeatureSchema, stage: int) -> StreetFeatures:
@@ -281,7 +297,7 @@ class NFSPAgent(NeuralNetworkAgent):
         elif stage == 3:
             return schema.river
         return schema.preflop
-
+        
     def _get_action_index_from_move(self, state: GameState, action_type: int, amount: Optional[int]) -> Optional[int]:
         """Finds the ACTION_MAP index that best matches a given game action."""
         if action_type == 0: return 0
@@ -316,17 +332,13 @@ class NFSPAgent(NeuralNetworkAgent):
         return None
 
     def _calculate_intelligent_equity(self, my_hole_cards, community_cards, historical_context=None) -> float:
-        """ 
-        Calculates Monte Carlo equity using batched neural network predictions for efficiency.
-        """
-        # Use the value stored from the config file
+        # [Preserve your existing logic here, it looked correct]
         trials = self.intelligent_equity_trials
 
         if self.opponent_as_network is None or self.last_opp_state_before_action is None:
             return 0.5
 
         opp_seat_id = 1 - self.seat_id
-        # When creating the temporary extractor, pass the random trials count again
         opp_feature_extractor = FeatureExtractor(
             seat_id=opp_seat_id,
             random_equity_trials=self.feature_extractor.random_equity_trials
@@ -340,14 +352,10 @@ class NFSPAgent(NeuralNetworkAgent):
         deck = [c for c in range(52) if c not in my_hole_cards and c not in community_cards]
         if len(deck) < 2: return 0.5
 
-        # --- PHASE 1: COLLECT ---
-        # Gather all feature vectors and corresponding hands before making any predictions.
         feature_vectors_to_batch = []
         candidate_hands = []
         
-        # In each trial, sample a new random opponent hand from the deck. May repeat.
         for _ in range(trials):
-            # Sample 2 cards without replacement from the deck.
             opp_hole_candidate = list(np.random.choice(deck, size=2, replace=False))
             
             opp_feature_extractor.new_hand()
@@ -357,45 +365,34 @@ class NFSPAgent(NeuralNetworkAgent):
             features_schema = opp_feature_extractor.extract_features(
                 temp_game_state, skip_random_equity=True
             )
-            # Append the raw numpy vector and the hand to lists
             feature_vectors_to_batch.append(features_schema.to_vector())
             candidate_hands.append(opp_hole_candidate)
 
-        # --- PHASE 2: PREDICT ---
-        # Process all collected feature vectors in one single batch.
         if not feature_vectors_to_batch:
             return 0.5
             
-        # Stack the list of numpy arrays into a single PyTorch tensor
         batch_tensor = torch.FloatTensor(np.array(feature_vectors_to_batch))
 
         with torch.no_grad():
-            # Make one single, efficient call to the network
             batch_predictions = self.opponent_as_network(batch_tensor)
             
         all_action_probs = batch_predictions['action_probs'].numpy()
         
-        # --- PHASE 3: PROCESS ---
-        # Loop through the batched results to run showdowns and calculate the final equity.
         weighted_wins = 0.0
         total_weight = 0.0
         
         for i, opp_hole_candidate in enumerate(candidate_hands):
-            # Get the weight from pre-computed batch results
             weight = all_action_probs[i][self.last_opp_action_index]
             
             if weight < 1e-6:
                 continue
 
-            # Run the showdown simulation
-            # Create a new deck for each trial that excludes the current candidate's hand
             current_remaining_deck = [c for c in deck if c not in opp_hole_candidate]
             num_to_deal = 5 - len(community_cards)
             if len(current_remaining_deck) < num_to_deal: continue
 
             board_runout = np.random.choice(current_remaining_deck, size=num_to_deal, replace=False)
             final_board = community_cards + list(board_runout)
-            # import pdb; pdb.set_trace()
 
             my_rank = self.feature_extractor.evaluator.best_hand_rank(my_hole_cards, final_board)
             opp_rank = self.feature_extractor.evaluator.best_hand_rank(opp_hole_candidate, final_board)
@@ -404,31 +401,26 @@ class NFSPAgent(NeuralNetworkAgent):
             if my_rank > opp_rank: outcome = 1.0
             elif my_rank == opp_rank: outcome = 0.5
             
-            # Accumulate the weighted results
             weighted_wins += outcome * weight
             total_weight += weight
         
         return weighted_wins / total_weight if total_weight > 0 else 0.5
 
+    # [Add save_models, load_models, save_buffers, load_buffers, etc. here from original code]
     def save_models(self, br_path: str = "nfsp_br.pt", as_path: str = "nfsp_as.pt"):
-        """Save both networks."""
         torch.save(self.br_network.state_dict(), br_path)
         torch.save(self.as_network.state_dict(), as_path)
-        # Note: Target network doesn't need to be saved as it's synced from main network
         
     def load_models(self, br_path: str = "nfsp_br.pt", as_path: str = "nfsp_as.pt"):
-        """Load both networks."""
         try:
             self.br_network.load_state_dict(torch.load(br_path, map_location='cpu'))
             self.as_network.load_state_dict(torch.load(as_path, map_location='cpu'))
-            # Sync target network with main network after loading
             self.br_target_network.load_state_dict(self.br_network.state_dict())
             print(f"Loaded NFSP models from {br_path} and {as_path}")
         except Exception as e:
             print(f"Could not load NFSP models: {e}")
 
     def save_buffers(self, rl_path: str, sl_path: str):
-        """Saves the RL and SL replay buffers to disk using pickle."""
         try:
             with open(rl_path, 'wb') as f:
                 pickle.dump(self.rl_buffer, f)
@@ -438,14 +430,13 @@ class NFSPAgent(NeuralNetworkAgent):
             print(f"Error saving buffers: {e}")
 
     def load_buffers(self, rl_path: str, sl_path: str):
-        """Loads the RL and SL replay buffers from disk if they exist."""
         try:
             if os.path.exists(rl_path) and os.path.exists(sl_path):
                 with open(rl_path, 'rb') as f:
                     self.rl_buffer = pickle.load(f)
                 with open(sl_path, 'rb') as f:
                     self.sl_buffer = pickle.load(f)
-                print(f"Successfully loaded replay buffers. RL: {len(self.rl_buffer)}, SL: {len(self.sl_buffer)}")
+                print(f"Successfully loaded replay buffers.")
             else:
                 print("No replay buffer files found, starting with empty buffers.")
         except Exception as e:

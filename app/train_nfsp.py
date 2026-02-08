@@ -14,6 +14,7 @@ from app.nfsp_components import NFSPAgent
 from app.poker_agents import RandomBot
 from app._hand_history_logger import HandHistoryLogger
 from app.live_plotter import LivePlotter
+from collections import deque
 
 class NFSPTrainer:
     """Main training loop for Neural Fictitious Self-Play."""
@@ -51,15 +52,16 @@ class NFSPTrainer:
 
         self._load_buffers()
 
-        # === Give agents a reference to their opponent's network ===
+        # === Give agents a reference to their opponent's network === 
         self.agents[0].opponent_as_network = self.agents[1].as_network
         self.agents[1].opponent_as_network = self.agents[0].as_network
 
-        # Training statistics
+        # Training statistics (Modified to be bounded)
         self.stats = {
-            'episode_rewards': [[], []],
-            'buffer_sizes_rl': [[], []],
-            'buffer_sizes_sl': [[], []],
+            # Keep only last 100 rewards for printing progress
+            'episode_rewards': [deque(maxlen=100), deque(maxlen=100)], 
+            'buffer_sizes_rl': [deque(maxlen=100), deque(maxlen=100)],
+            'buffer_sizes_sl': [deque(maxlen=100), deque(maxlen=100)],
             'training_time': 0
         }
 
@@ -67,20 +69,12 @@ class NFSPTrainer:
         self.best_avg_reward = -float('inf')
 
         # --- Initialize the logger ---
+        csv_path = os.path.join(self.output_dir, "metrics.csv")
+        plot_path = os.path.join(self.output_dir, "training_dashboard.png")
         log_path = os.path.join(self.output_dir, "hand_history.log")
-        data_path = os.path.join(self.output_dir, "hand_data.jsonl")
-        plot_path = os.path.join(self.output_dir, "training_dashboard.png") # New image file
-        self.logger = HandHistoryLogger(log_file=log_path, data_file=data_path, dump_features=config['logging']['dump_features'])
+        self.logger = HandHistoryLogger(log_file=log_path, dump_features=config['logging']['dump_features'])
         self.hand_counter = 0
-        if os.path.exists(data_path):
-            try:
-                # Count lines in the file to determine current hand number
-                with open(data_path, 'r') as f:
-                    self.hand_counter = sum(1 for _ in f)
-                print(f"Resuming stats from Hand {self.hand_counter}...")
-            except Exception:
-                print("Could not read existing data, starting counter at 0.")
-        self.plotter = LivePlotter(data_file=data_path, plot_file=plot_path, window_size=1000)
+        self.plotter = LivePlotter(plot_file=plot_path, csv_file=csv_path)
         
         # === Attempt to load latest models to resume training ===
         self._load_models(suffix="_latest")
@@ -111,8 +105,8 @@ class NFSPTrainer:
                     
                 # Progress reporting
                 if episode % 100 == 0:
-                    avg_reward_0 = np.mean(self.stats['episode_rewards'][0][-100:]) if len(self.stats['episode_rewards'][0]) >= 100 else 0
-                    avg_reward_1 = np.mean(self.stats['episode_rewards'][1][-100:]) if len(self.stats['episode_rewards'][1]) >= 100 else 0
+                    avg_reward_0 = np.mean(self.stats['episode_rewards'][0]) if self.stats['episode_rewards'][0] else 0
+                    avg_reward_1 = np.mean(self.stats['episode_rewards'][1]) if self.stats['episode_rewards'][1] else 0
                     print(f"Episode {episode}: Agent0={avg_reward_0:.2f}, Agent1={avg_reward_1:.2f}")
 
         except KeyboardInterrupt:
@@ -186,23 +180,18 @@ class NFSPTrainer:
         for agent in self.agents:
             agent.observe_showdown(showdown_state)
 
-        self.logger.log_end_hand(episode_rewards, state)
-
         # Capture the data returned by the logger
         hand_data = self.logger.log_end_hand(episode_rewards, state)
         
-        # Update the live plotter memory
-        self.plotter.update(hand_data)
+        if hand_data:
+            self.plotter.update(hand_data)
         
         # Update the actual image file periodically (e.g., every 50 hands)
-        # Doing this every hand is too slow (IO heavy)
-        if self.hand_counter % 50 == 0:
+        if self.hand_counter % 100 == 0:
             self.plotter.save_plot()
             
         return episode_rewards
-        
-        return episode_rewards
-        
+            
     def _evaluate_performance(self, episode: int):
         """Evaluate agent performance against random baseline AND save best models."""
         print(f"\n--- Evaluation at Episode {episode} ---")

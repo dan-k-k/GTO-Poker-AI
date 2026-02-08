@@ -142,58 +142,101 @@ class NeuralNetworkAgent(PokerAgent):
         super().new_hand()
         self.feature_extractor.new_hand()
 
-    def _get_action_from_network(self, features: np.ndarray, network: nn.Module, state: GameState) -> Tuple[int, Optional[int], int, Dict]:
-        """Get action from a network and return internal predictions."""
+    def _get_action_from_network(self, features: np.ndarray, network: nn.Module, state: GameState, use_greedy: bool = False, epsilon: float = 0.0) -> Tuple[int, Optional[int], int, Dict, bool]:
+        """
+        Returns: (action_type, amount, action_index, predictions, is_exploring_flag)
+        """
         with torch.no_grad():
             features_tensor = torch.FloatTensor(features).unsqueeze(0)
             predictions = network(features_tensor)
+            q_values = predictions['q_values'][0].numpy()
             action_probs = predictions['action_probs'][0].numpy()
         
-        # 1. Filter to get a mask of legal actions
+        # 1. Get Mask of Legal Actions
         legal_action_mask = self._get_legal_action_mask(state)
+        
+        # Fallback if no actions legal (should not happen in valid poker logic)
         if not np.any(legal_action_mask):
-            # Fallback if no actions are legal (shouldn't happen in a valid state)
-            return 1, None, 1, predictions # Default to call/check with action_index 1
-            
-        # 2. Apply the mask to the network's probabilities
-        filtered_probs = action_probs * legal_action_mask
-        
-        # 3. Normalize and sample
-        prob_sum = np.sum(filtered_probs)
-        if prob_sum > 0:
-            filtered_probs /= prob_sum
+            return 1, None, 1, predictions, False
+
+        action_index = 0
+        is_random_exploration = False # NEW FLAG
+
+        # === PATH A: Best Response (Greedy + Epsilon) ===
+        if use_greedy:
+            if random.random() < epsilon:
+                # Pick a random LEGAL action
+                legal_indices = np.where(legal_action_mask)[0]
+                action_index = np.random.choice(legal_indices)
+                is_random_exploration = True # Mark as random
+            else:
+                # Argmax on Q-values with masking
+                masked_q_values = q_values.copy()
+                masked_q_values[~legal_action_mask] = -float('inf')
+                action_index = np.argmax(masked_q_values)
+
+        # === PATH B: Average Strategy (Softmax Sampling) ===
         else:
-            # If all legal actions have 0 probability, distribute equally
-            filtered_probs = legal_action_mask / np.sum(legal_action_mask)
+            filtered_probs = action_probs * legal_action_mask
+            prob_sum = np.sum(filtered_probs)
+            
+            if prob_sum > 0:
+                filtered_probs /= prob_sum
+            else:
+                # If network predicts 0 probability for all legal moves, uniform sample legal ones
+                filtered_probs = legal_action_mask.astype(float) / np.sum(legal_action_mask)
                 
-        # Sample the action index (0-11)
-        action_index = np.random.choice(NUM_ACTIONS, p=filtered_probs)
+            action_index = np.random.choice(NUM_ACTIONS, p=filtered_probs)
         
-        # 4. Convert action index to game action (fold/call/raise) and amount
+        # 3. Convert to game action
         action_type, sizing = ACTION_MAP[action_index]
         amount = None
-        if action_type == 2: # If it's a raise
-            amount = self._calculate_bet_amount(sizing, state)
         
-        return action_type, amount, action_index, predictions
+        if action_type == 2:
+            amount = self._calculate_bet_amount(sizing, state)
+            # CRITICAL SAFETY: Re-verify amount is valid
+            min_raise = state.get_min_raise_amount()
+            if amount is None or (min_raise is not None and amount < min_raise and sizing != -1):
+                 # This path should be blocked by the mask, but as a fallback:
+                 return 1, None, 1, predictions, False 
+        
+        return action_type, amount, action_index, predictions, is_random_exploration
         
     def _get_legal_action_mask(self, state: GameState) -> np.ndarray:
-        """Returns a boolean mask of size NUM_ACTIONS indicating which actions are legal."""
         mask = np.zeros(NUM_ACTIONS, dtype=bool)
         legal_actions_from_state = state.get_legal_actions()
         min_raise = state.get_min_raise_amount()
         
         for i, (action_type, sizing) in enumerate(ACTION_MAP):
-            if action_type in legal_actions_from_state:
-                if action_type == 2: # Raise
-                    potential_amount = self._calculate_bet_amount(sizing, state)
-                    if potential_amount is not None and min_raise is not None and potential_amount >= min_raise:
-                        mask[i] = True
-                else: # Fold or Call
+            if action_type not in legal_actions_from_state:
+                continue
+                
+            if action_type == 2: # Raise
+                if min_raise is None: continue # Should not happen if 2 is in legal_actions
+                
+                # Handling All-in (-1)
+                if sizing == -1: 
                     mask[i] = True
+                    continue
+
+                # Calculate specific raise amount
+                amount_to_call = max(state.current_bets) - state.current_bets[self.seat_id]
+                pot_after_call = state.pot + amount_to_call
+                raise_amount = int(pot_after_call * sizing)
+                total_amount = amount_to_call + raise_amount
+                
+                # FIX: Strictly enforce min_raise for fractional bets
+                # If the calculated logic results in an illegal small raise, mask it OUT.
+                # Do NOT clamp it up. This forces the bot to choose a larger sizing index.
+                if total_amount >= min_raise and total_amount <= state.stacks[self.seat_id]:
+                    mask[i] = True
+            else:
+                mask[i] = True
+                
         return mask
 
     def _calculate_bet_amount(self, sizing: float, state: GameState) -> Optional[int]:
+        # Keeps original logic but returns raw calculated amount for masking check
         stack = state.stacks[self.seat_id]
         if stack == 0: return None
         if sizing == -1: return stack
@@ -203,10 +246,8 @@ class NeuralNetworkAgent(PokerAgent):
         raise_amount = int(pot_after_call * sizing)
         total_amount = amount_to_call + raise_amount
         
-        min_raise = state.get_min_raise_amount()
-        if min_raise is None: return None
-        
-        return max(min_raise, min(total_amount, stack))
+        # We allow the caller to handle the min/max clamping validation
+        return min(total_amount, stack)
 
 
 class GTOAgent(NeuralNetworkAgent):

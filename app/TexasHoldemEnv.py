@@ -172,7 +172,7 @@ class TexasHoldemEnv:
 
         player = self.state.to_move
         current_max = max(self.state.current_bets)
-
+    
         # Execute action
         if action == 0: # FOLD
             self.state.active[player] = False

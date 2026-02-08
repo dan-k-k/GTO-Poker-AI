@@ -7,7 +7,7 @@ training:
   eval_interval: 500
 
 agent:
-  eta: 0.1              # Probability of using the average strategy (exploration)
+  eta: 0.3              # Probability of using the average strategy (exploration)
                         # eta can start around 0.3 in first ~200,000 episodes, but lower it to 0.05 later on.
   learning_rate: 0.001  # ! Can be sensitive to change late in training !
   gamma: 1.0          # Discount factor for future rewards - No need to change from 1.0 (for terminal reward only)
