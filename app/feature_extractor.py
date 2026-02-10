@@ -67,14 +67,14 @@ class FeatureExtractor:
         """
         Main extraction method. Populates the clean schema with both historical and real-time data.
         """
-        # 1. Extract Hand-Static features ONCE per hand
+        # 1. Extract Hand-Static features once per hand
         if not self._hand_features_extracted:
             self._extract_hand_features(state)
             self._hand_features_extracted = True
 
         current_stage = state.stage
 
-        # 2. Populate static card features and FINALIZED betting history for PAST streets
+        # 2. Populate static card features and finalise betting history for past streets
         for stage in range(current_stage):  # Note: Loops up to (but not including) the current stage
             # Get the right schema objects for the historical stage
             street_cards_schema = self._get_street_cards_schema(stage)
@@ -85,21 +85,21 @@ class FeatureExtractor:
                 self._extract_static_street_features(state, street_cards_schema, stage, skip_random_equity=skip_random_equity)
                 self._street_features_extracted[stage] = True
             
-            # Populate FINALIZED betting history from internal tracker
+            # Populate finalised betting history from internal tracker
             betting_history_schema.my_bets_opened = self._normalize_clip(self._betting_history['my_bets_opened'][stage], 10.0)
             betting_history_schema.my_raises_made = self._normalize_clip(self._betting_history['my_raises_made'][stage], 10.0)
             betting_history_schema.opp_bets_opened = self._normalize_clip(self._betting_history['opp_bets_opened'][stage], 10.0)
             betting_history_schema.opp_raises_made = self._normalize_clip(self._betting_history['opp_raises_made'][stage], 10.0)
             betting_history_schema.actions_on_street = self._normalize_clip(self._action_counts_this_street[stage], 10.0)
 
-        # 3. Populate static card features for the CURRENT street
+        # 3. Populate static card features for the current street
         current_street_cards_schema = self._get_street_cards_schema(current_stage)
         # Only extract static card features if not already done for this street
         if not self._street_features_extracted[current_stage]:
             self._extract_static_street_features(state, current_street_cards_schema, current_stage, skip_random_equity=skip_random_equity)
             self._street_features_extracted[current_stage] = True
 
-        # 4. Populate ALL dynamic features for the IMMEDIATE decision
+        # 4. Populate ALL dynamic features for the immediate decision
         self._update_dynamic_features(state)
 
         return self.schema
@@ -121,7 +121,7 @@ class FeatureExtractor:
         dyn_schema = self.schema.dynamic
         bb_size = state.big_blind if state.big_blind > 0 else 1
         
-        # Define normalization constants based on game parameters
+        # Define normalisation constants based on game parameters
         STARTING_STACK_BB = state.starting_stack / bb_size if bb_size > 0 else 200
         MAX_POT_BB = (state.starting_stack * self.num_players) / bb_size if bb_size > 0 else 400
 
@@ -151,7 +151,7 @@ class FeatureExtractor:
         else:
             dyn_schema.player_has_initiative = 0.0
         
-        # --- Pot Odds (Corrected for All-In/Effective Stacks) ---
+        # --- Pot Odds ---
         raw_to_call = max(state.current_bets) - state.current_bets[self.seat_id]
         my_remaining_stack = state.stacks[self.seat_id]
         

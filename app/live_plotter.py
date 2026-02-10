@@ -55,9 +55,7 @@ class LivePlotter:
             # Reference Lines (Heads Up Norms)
             # VPIP in HU is very high (SB plays ~80-95%)
             ax1.axhline(0.90, color='blue', linestyle='--', alpha=0.3, label='Ref VPIP (~0.9)')
-            # PFR is aggressive but lower than VPIP
             ax1.axhline(0.55, color='orange', linestyle='--', alpha=0.3, label='Ref PFR (~0.55)')
-            
             ax1.set_title('P0 AS Preflop Strategy')
             ax1.legend(loc='lower right', fontsize='small')
             ax1.grid(True, alpha=0.2)
@@ -66,33 +64,24 @@ class LivePlotter:
             # --- Plot 2: Reward ---
             ax2.plot(plot_data.index, plot_data['reward'], color='green', linewidth=1)
             ax2.axhline(0, color='black', lw=1, linestyle='-')
-            
             current_reward = rolling['reward'].iloc[-1] if not rolling.empty else 0
             ax2.set_title(f"P0 AS Avg Reward (Last: {current_reward:.2f})")
             ax2.grid(True, alpha=0.2)
 
             # --- Plot 3: Aggression Frequency (AFq) ---
             ax3.plot(plot_data.index, plot_data['afq'], color='red', linewidth=1.5)
-            
-            # Reference Line (Balanced Aggression is usually 0.45 - 0.55)
             ax3.axhline(0.50, color='red', linestyle='--', alpha=0.3, label='Ref AFq (0.5)')
-            
             ax3.set_title('P0 AS Aggression Freq')
             ax3.legend(loc='lower right', fontsize='small')
             ax3.grid(True, alpha=0.2)
             # ax3.set_ylim(0, 1.0)
 
             # --- Plot 4: Entropy ---
-            # Using fillna(0) to ensure plot draws even if data is missing
             if 'entropy' in plot_data:
                 clean_entropy = plot_data['entropy'].fillna(0)
                 ax4.plot(plot_data.index, clean_entropy, color='purple', linewidth=1.5)
-            
             ax4.set_title('P0 AS Entropy (Policy Uncertainty)')
             ax4.grid(True, alpha=0.2)
-            # Standardize Y-axis to see small values, or fix to 0-1 if normalized
-            # Auto-scaling is usually better for entropy as it drops over time
-
             plt.tight_layout()
             plt.savefig(self.plot_file)
             plt.close(fig)

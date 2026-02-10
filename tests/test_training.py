@@ -38,6 +38,7 @@ TEST_CONFIG_DATA = {
         'intelligent_equity_trials': 10,
     },
     'logging': {
+        'verbose': True,
         'dump_features': False 
     }
 }

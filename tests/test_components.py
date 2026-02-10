@@ -51,19 +51,21 @@ def _create_mock_state(**kwargs) -> GameState:
 # --- TEST SUITES ---
 class TestBuffers(unittest.TestCase):
     def test_rl_buffer_push_and_capacity(self):
-        buffer = ReplayBuffer(capacity=3)
+        buffer = ReplayBuffer(capacity=3, input_size=FEATURE_VECTOR_SIZE)
         self.assertEqual(len(buffer), 0)
         for i in range(4):
-            # Added dummy_mask to match new signature
             buffer.push(_create_dummy_vector(), i, float(i), _create_dummy_vector(), False, _create_dummy_mask())
         self.assertEqual(len(buffer), 3)
-        actions_in_buffer = [experience[1] for experience in buffer.buffer]
+        
+        actions_in_buffer = buffer.actions[:len(buffer)]
+        
         self.assertNotIn(0, actions_in_buffer)
         self.assertIn(1, actions_in_buffer)
         self.assertIn(3, actions_in_buffer)
 
     def test_rl_buffer_sample(self):
-        buffer = ReplayBuffer(capacity=10)
+        # FIX: Added input_size argument
+        buffer = ReplayBuffer(capacity=10, input_size=FEATURE_VECTOR_SIZE)
         batch_size = 4
         for _ in range(5):
             # Added dummy_mask to match new signature
@@ -166,8 +168,11 @@ class TestNFSPAgent(unittest.TestCase):
         
         self.assertEqual(len(self.agent.rl_buffer), 1, "Should have pushed exactly one experience.")
         
-        # Unpack including next_mask
-        s, a, r, next_s, done, next_mask = self.agent.rl_buffer.buffer[0]
+        # FIX: Access internal arrays instead of unpacking .buffer[0]
+        s = self.agent.rl_buffer.states[0]
+        a = self.agent.rl_buffer.actions[0]
+        r = self.agent.rl_buffer.rewards[0]
+        done = self.agent.rl_buffer.dones[0]
         
         self.assertTrue(np.array_equal(s, pending_state))
         self.assertEqual(a, pending_action)
@@ -196,7 +201,11 @@ class TestNFSPAgent(unittest.TestCase):
 
         self.assertEqual(len(self.agent.rl_buffer), 1, "Should have pushed the final hand experience.")
 
-        s, a, r, next_s, done, next_mask = self.agent.rl_buffer.buffer[0]
+        # FIX: Access internal arrays instead of unpacking .buffer[0]
+        s = self.agent.rl_buffer.states[0]
+        a = self.agent.rl_buffer.actions[0]
+        r = self.agent.rl_buffer.rewards[0]
+        done = self.agent.rl_buffer.dones[0]
         
         self.assertTrue(np.array_equal(s, pending_state), "State vector mismatch.")
         self.assertEqual(a, pending_action, "Action index mismatch.")

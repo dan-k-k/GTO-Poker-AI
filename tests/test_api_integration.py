@@ -11,6 +11,7 @@ from unified_api import app, load_global_model
 from app.nfsp_components import NFSPAgent
 from app.feature_extractor import FeatureExtractor
 from app.poker_core import GameState, string_to_card_id
+from app.poker_agents import NUM_ACTIONS
 
 class TestIntegrationFeatures(unittest.TestCase):
     
@@ -24,9 +25,9 @@ class TestIntegrationFeatures(unittest.TestCase):
         
         # Mock Network Outputs
         mock_out = {
-            'action_probs': torch.tensor([[1/12]*12], dtype=torch.float32), 
-            'action_logits': torch.zeros((1, 12)), 
-            'q_values': torch.zeros((1, 12)), 
+            'action_probs': torch.tensor([[1/NUM_ACTIONS]*NUM_ACTIONS], dtype=torch.float32), 
+            'action_logits': torch.zeros((1, NUM_ACTIONS)), 
+            'q_values': torch.zeros((1, NUM_ACTIONS)), 
             'state_values': torch.zeros((1, 1))
         }
         cls.dummy_agent.as_network = MagicMock(return_value=mock_out)
