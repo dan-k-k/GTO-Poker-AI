@@ -118,8 +118,11 @@ class TestFinalEdgeCases(unittest.TestCase):
 
     def test_full_raise_reopens_action(self):
         """
-        Verify that a 'full raise' (>= min_raise), even if it puts a player all-in,
-        re-opens the betting for the original bettor.
+        Verify that in a Heads-Up specific engine, a 'full raise' that puts a player all-in
+        does NOT allow a re-raise.
+        
+        Logic: In HU, if the opponent is All-In, raising is functionally identical to Calling.
+        To simplify the action space for ML/RL, we mask 'Raise' as illegal in this spot.
         """
         # Setup: P0 (SB/Dealer), P1 (BB).
         # Stacks: P0=2000 (Deep), P1=300 (Short).
@@ -140,21 +143,19 @@ class TestFinalEdgeCases(unittest.TestCase):
         self.assertEqual(env.state.current_bets[0], 100)
         
         # P1 Raises All-In. 
-        # P1 has 280 chips left. They put them all in.
-        # Total bet = 280. 
-        # Raise amount = 280 (new total) - 100 (current max) = 180.
-        # Min raise is 20 (BB). 180 >= 20.
-        # This IS a full raise.
-        
         p1_stack = env.state.stacks[1] # Should be 280
         env.step(2, amount=p1_stack)
         
         # Action returns to P0.
         self.assertEqual(env.state.to_move, 0)
         
-        # Verify P0 can Raise again (Action 2 is legal).
+        # Verify P0 CANNOT Raise (Optimization for Heads-Up).
         legal_actions = env.state.get_legal_actions()
-        self.assertIn(2, legal_actions, "P0 should be allowed to re-raise because P1 made a full raise")
+        
+        # We now Assert that 2 (Raise) is NOT in legal actions
+        self.assertNotIn(2, legal_actions, "P0 should NOT be allowed to re-raise an All-In in HU (redundant action)")
+        self.assertIn(1, legal_actions, "P0 must be able to Call")
+        self.assertIn(0, legal_actions, "P0 must be able to Fold")
 
     def test_simultaneous_elimination_results_in_tournament_winner(self):
         """

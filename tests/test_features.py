@@ -133,21 +133,21 @@ class TestFeatureExtractor(unittest.TestCase):
 
         self.extractor.new_hand()
         state_immediate_flush_blocker = self._create_base_state(
-            stage=1, community=cards(['Kh', 'Qh', '2h']), hole_cards=[cards(['Ah', '3d']), cards(['Xx', 'Xx'])]
+            stage=1, community=cards(['Kh', 'Qh', '2h']), hole_cards=[cards(['Ah', '3d']), cards(['4s', '5c'])]
         )
         schema1 = self.extractor.extract_features(state_immediate_flush_blocker)
         self.assertEqual(schema1.flop_cards.has_flush_blocker, 1.0)
 
         self.extractor.new_hand()
         state_backdoor_flush_blocker = self._create_base_state(
-            stage=1, community=cards(['Kh', 'Qd', '2h']), hole_cards=[cards(['Ah', '3d']), cards(['Xx', 'Xx'])]
+            stage=1, community=cards(['Kh', 'Qd', '2h']), hole_cards=[cards(['Ah', '3d']), cards(['4s', '5c'])]
         )
         schema2 = self.extractor.extract_features(state_backdoor_flush_blocker)
         self.assertEqual(schema2.flop_cards.has_flush_blocker, 0.5)
 
         self.extractor.new_hand()
         state_made_flush = self._create_base_state(
-            stage=1, community=cards(['Kh', 'Qh', '2h']), hole_cards=[cards(['Ah', 'Th']), cards(['Xx', 'Xx'])]
+            stage=1, community=cards(['Kh', 'Qh', '2h']), hole_cards=[cards(['Ah', 'Th']), cards(['4s', '5c'])]
         )
         schema3 = self.extractor.extract_features(state_made_flush)
         self.assertEqual(schema3.flop_cards.has_flush_blocker, 0.0)
@@ -157,21 +157,21 @@ class TestFeatureExtractor(unittest.TestCase):
 
         self.extractor.new_hand()
         state_oesd_blocker = self._create_base_state(
-            stage=1, community=cards(['8s', '9d', 'Td']), hole_cards=[cards(['Js', '2c']), cards(['Xx', 'Xx'])]
+            stage=1, community=cards(['8s', '9d', 'Td']), hole_cards=[cards(['Js', '2c']), cards(['4s', '5c'])]
         )
         schema4 = self.extractor.extract_features(state_oesd_blocker)
         self.assertEqual(schema4.flop_cards.straight_blocker_value, 1.0)
 
         self.extractor.new_hand()
         state_gutshot_blocker = self._create_base_state(
-            stage=1, community=cards(['8s', '9d', 'Jc']), hole_cards=[cards(['Ts', '2c']), cards(['Xx', 'Xx'])]
+            stage=1, community=cards(['8s', '9d', 'Jc']), hole_cards=[cards(['Ts', '2c']), cards(['4s', '5c'])]
         )
         schema5 = self.extractor.extract_features(state_gutshot_blocker)
         self.assertEqual(schema5.flop_cards.straight_blocker_value, 0.5)
 
         self.extractor.new_hand()
         state_made_straight = self._create_base_state(
-            stage=1, community=cards(['8s', '9d', 'Td']), hole_cards=[cards(['Js', '7c']), cards(['Xx', 'Xx'])]
+            stage=1, community=cards(['8s', '9d', 'Td']), hole_cards=[cards(['Js', '7c']), cards(['4s', '5c'])]
         )
         schema6 = self.extractor.extract_features(state_made_straight)
         self.assertEqual(schema6.flop_cards.straight_blocker_value, 0.0)
@@ -179,7 +179,7 @@ class TestFeatureExtractor(unittest.TestCase):
 
         self.extractor.new_hand()
         state_no_blocker = self._create_base_state(
-            stage=1, community=cards(['8s', '9d', 'Td']), hole_cards=[cards(['2c', '2h']), cards(['Xx', 'Xx'])]
+            stage=1, community=cards(['8s', '9d', 'Td']), hole_cards=[cards(['2c', '2h']), cards(['4s', '5c'])]
         )
         schema7 = self.extractor.extract_features(state_no_blocker)
         self.assertEqual(schema7.flop_cards.straight_blocker_value, 0.0)

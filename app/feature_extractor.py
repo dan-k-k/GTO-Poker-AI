@@ -154,12 +154,10 @@ class FeatureExtractor:
         # --- Pot Odds ---
         raw_to_call = max(state.current_bets) - state.current_bets[self.seat_id]
         my_remaining_stack = state.stacks[self.seat_id]
-        
-        # You can only ever pay what you have
         actual_to_call = min(raw_to_call, my_remaining_stack)
         
         if actual_to_call > 0:
-            # If the opponent bet MORE than we can match, 'excess' money 
+            # Opponent bet MORE than we can match, 'excess' money 
             excess_bet = max(0, raw_to_call - actual_to_call)
             
             # The pot we are actually playing for (Effective Pot)
@@ -187,10 +185,7 @@ class FeatureExtractor:
             dyn_schema.spr = 0.0
 
     def _extract_static_street_features(self, state: GameState, street_schema: StreetFeatures, stage: int, skip_random_equity: bool = False):
-        """
-        A generic function to populate the STATIC features for ANY street schema.
-        This is only called ONCE per street.
-        """
+        """Populate the STATIC features for ANY street schema. Called ONCE per street."""
         hole = state.hole_cards[self.seat_id]
 
         cards_on_street = {0: 0, 1: 3, 2: 4, 3: 5}
@@ -340,7 +335,6 @@ class FeatureExtractor:
         if len(cards) < 5:
             return # Not enough cards for straights, flushes, etc.
 
-        # Now call best_hand_rank with the clean, separate lists
         raw_rank = -self.evaluator.best_hand_rank(hole, community)
 
         hand_class = self.evaluator.evaluator.get_rank_class(raw_rank)
@@ -354,15 +348,10 @@ class FeatureExtractor:
         elif hand_class == 5: # Straight
             setattr(street_schema, f"{prefix}straight", 1.0)
 
-# --------------------------------------------------------
-# --------------------------------------------------------
-
     def _get_straight_draw_qualities(self, cards: list) -> tuple:
-        """
-        Analyzes cards to find the quality of the best 3 and 4-card straight draws.
+        """Analyzes cards to find the quality of the best 3 and 4-card straight draws.
         Quality: 1.0 for consecutive (strong), 0.5 for gapped (weaker).
-        Returns a tuple: (three_card_draw_quality, four_card_draw_quality)
-        """
+        Returns a tuple: (three_card_draw_quality, four_card_draw_quality"""
         ranks = sorted(list(set([c // 4 for c in cards])))
         if 12 in ranks: ranks.insert(0, -1) # Handle Ace-low
 
@@ -434,14 +423,12 @@ class FeatureExtractor:
         for i in range(len(ranks) - 2):
             three_ranks = ranks[i:i+3]
             if three_ranks[2] - three_ranks[0] == 2: # Consecutive
-                # This is a simplification. Assume it's open-ended.
                 return 'OESD', [three_ranks[0] - 1, three_ranks[2] + 1]
 
         # 4. Check for 3-card gutshot draws (e.g., 5-7-8)
         for i in range(len(ranks) - 2):
             three_ranks = ranks[i:i+3]
             if three_ranks[2] - three_ranks[0] in [3, 4]: # One or two gaps
-                # This is a simplification, but captures the essence
                 return 'gutshot', [r for r in range(three_ranks[0]+1, three_ranks[2])]
 
         return None, []
@@ -451,13 +438,9 @@ class FeatureExtractor:
         if not my_hole: return 0.5
 
         known_cards = set(my_hole + community)
-        deck = np.array([c for c in range(52) if c not in known_cards], dtype=int)
-        
+        deck = np.array([c for c in range(52) if c not in known_cards], dtype=int)  
         cards_to_draw = 2 + (5 - len(community))
-                
         wins = 0
-        
-        # We get the evaluator instance once
         evaluator = self.evaluator
         
         for _ in range(trials):

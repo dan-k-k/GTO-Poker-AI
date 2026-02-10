@@ -116,24 +116,16 @@ class LivePlotter:
             pfr = 1.0 if any(a['action_type'] == 2 for a in preflop) else 0.0
             
             # Aggression Freq (Raise / (Call + Raise + Fold))
-            # Note: Checks are not "actions" in AFq usually, but simplistic version:
             raise_count = sum(1 for a in p0_actions if a['action_type'] == 2)
             afq = raise_count / len(p0_actions) if p0_actions else 0.0
 
             # Entropy
-            # Only count actions where entropy was actually logged
             valid_entropies = [a['entropy'] for a in p0_actions if 'entropy' in a and a['entropy'] is not None]
             
             # If no entropy data found, default to 0.0 so the plot isn't blank
             avg_ent = np.mean(valid_entropies) if valid_entropies else 0.0
 
-            return {
-                'vpip': vpip, 
-                'pfr': pfr, 
-                'reward': hand_data['rewards'][0], 
-                'afq': afq, 
-                'entropy': avg_ent
-            }
+            return {'vpip': vpip, 'pfr': pfr, 'reward': hand_data['rewards'][0], 'afq': afq, 'entropy': avg_ent}
         except Exception:
             return None
         

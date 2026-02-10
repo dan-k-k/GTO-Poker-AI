@@ -26,7 +26,6 @@ class ReplayBuffer:
         self._init_buffers()
 
     def _init_buffers(self):
-        # Move allocation here so we can call it during loading
         self.states = np.zeros((self.capacity, self.input_size), dtype=np.float32)
         self.next_states = np.zeros((self.capacity, self.input_size), dtype=np.float32)
         self.actions = np.zeros(self.capacity, dtype=np.int64) 
@@ -55,10 +54,7 @@ class ReplayBuffer:
         return self.size
     
     def __getstate__(self):
-        """
-        Only save the valid parts of the arrays to save disk space 
-        and time, unless buffer is full.
-        """
+        """Only save the valid parts of the arrays to save disk space."""
         # Optimization: Only slice if not full.
         if self.size < self.capacity:
             return {'capacity': self.capacity, 'input_size': self.input_size, 'action_dim': self.action_dim, 'ptr': self.ptr, 'size': self.size, 'states': self.states[:self.size], 'next_states': self.next_states[:self.size], 'actions': self.actions[:self.size], 'rewards': self.rewards[:self.size], 'dones': self.dones[:self.size], 'masks': self.masks[:self.size]}
@@ -135,27 +131,19 @@ class SLBuffer:
     def __len__(self):
         return self.size
 
-    # --- MAGIC METHODS FOR LOADING OLD BUFFERS ---
-    
+    # Methods to load old buffers
     def __getstate__(self):
         """Called when saving: only save the efficient numpy arrays."""
-        return {
-            'capacity': self.capacity,
-            'input_size': self.input_size,
-            'state_buffer': self.state_buffer,
-            'action_buffer': self.action_buffer,
-            'size': self.size,
-            'total_count': self.total_count
-        }
+        return {'capacity': self.capacity,'input_size': self.input_size,'state_buffer': self.state_buffer,'action_buffer': self.action_buffer,'size': self.size,'total_count': self.total_count}
 
     def __setstate__(self, state):
         """Called when loading: handle both old (list) and new (dict) formats."""
         
-        # CASE 1: Loading a NEW optimized buffer (It's a dict)
+        # Loading a new buffer
         if isinstance(state, dict):
             self.__dict__.update(state)
             
-        # CASE 2: Loading an OLD buffer (It was just the instance dict)
+        # Loading an old buffer
         elif 'buffer' in state:
             print("  Converting legacy SLBuffer to optimized format...")
             self.capacity = state['capacity']
@@ -181,15 +169,12 @@ class SLBuffer:
                 self.action_buffer = None
 
 class NFSPAgent(NeuralNetworkAgent):
-    """
-    Neural Fictitious Self-Play Agent.
-    Corrected to handle turn-based transitions propertly.
-    """
+    """Neural Fictitious Self-Play Agent."""
     
     def __init__(self, seat_id: int, agent_config: Dict, buffer_config: Dict, random_equity_trials: int, starting_stack: int):
         super().__init__(seat_id)
         self.starting_stack = float(starting_stack)
-        
+        self.mode = 'train'
         self.feature_extractor = FeatureExtractor(
             seat_id=self.seat_id,
             random_equity_trials=random_equity_trials
@@ -226,20 +211,18 @@ class NFSPAgent(NeuralNetworkAgent):
         
         self.use_average_strategy_this_hand = False
 
-        # === PENDING EXPERIENCE STORE ===
-        # We store the state/action from the PREVIOUS turn here.
-        # We only push them to the buffer when we reach the NEXT turn (or showdown).
+        # === EXPERIENCE STORE ===
         self.pending_state: Optional[np.ndarray] = None
         self.pending_action: Optional[int] = None
 
     def compute_action(self, state: GameState) -> Tuple[int, Optional[int], Dict, str, 'PokerFeatureSchema']:
-        # 1. Extract CURRENT state features (S_t)
+        # 1. Extract current state features (S_t)
         features_schema = self.feature_extractor.extract_features(state)
         current_features_vector = features_schema.to_vector()
-        current_legal_mask = self._get_legal_action_mask(state) # You need access to this here
+        current_legal_mask = self._get_legal_action_mask(state)
 
-        # 2. Check if we have a pending experience from the PREVIOUS turn (S_{t-1})
-        if self.pending_state is not None and self.pending_action is not None:
+        # 2. Check if we have a pending experience from the previous turn (S_{t-1})
+        if self.mode == 'train' and self.pending_state is not None:
             self.rl_buffer.push(
                 state=self.pending_state,
                 action=self.pending_action,
@@ -248,12 +231,9 @@ class NFSPAgent(NeuralNetworkAgent):
                 done=False,
                 next_legal_mask=current_legal_mask
             )
-            
-            # Trigger Learning Steps
             self._attempt_learning_step()
 
         # 3. Select New Action (A_t)
-        # Determine policy for this HAND (set in new_hand)
         use_average_strategy = self.use_average_strategy_this_hand
         
         if use_average_strategy:
@@ -264,7 +244,7 @@ class NFSPAgent(NeuralNetworkAgent):
             action_type, amount, action_index, predictions, is_random = self._get_action_from_network(
                 features=current_features_vector, network=self.br_network, state=state, use_greedy=True, epsilon=current_epsilon)
         
-        # FIX: Only push to SL buffer if NOT exploring
+        # Only push to SL buffer if NOT exploring
         if not use_average_strategy and not is_random:
             self.sl_buffer.push(current_features_vector, action_index)
             
@@ -275,21 +255,14 @@ class NFSPAgent(NeuralNetworkAgent):
         return action_type, amount, predictions, policy_name, features_schema
         
     def observe(self, player_action, player_id, state_before_action: GameState, next_state: GameState):
-        """
-        Passive observation. 
-        We NO LONGER use this to record our own trajectory (that happens in compute_action).
-        We ONLY use this to update the feature extractor and track opponents.
-        """
+        """Passive observation. Only use this to update the feature extractor."""
         action_taken, amount_put_in = player_action
         
         # 1. Update Betting History in Feature Extractor
         self.feature_extractor.update_betting_action(player_id, action_taken, state_before_action, state_before_action.stage)
             
     def observe_showdown(self, showdown_state):
-        """
-        The hand is over. We must close the loop on the LAST action taken.
-        This provides the final reward (S_last -> S_terminal).
-        """
+        """The hand is over. We must close the loop on the LAST action taken. This provides the final reward (S_last -> S_terminal)."""
         # Calculate the single, final reward.
         my_stack_before = showdown_state.get('stacks_before', {}).get(self.seat_id, 0)
         my_stack_after = showdown_state.get('stacks_after', {}).get(self.seat_id, 0)
@@ -308,7 +281,7 @@ class NFSPAgent(NeuralNetworkAgent):
                 reward=final_reward,     # THE REAL REWARD IS HERE
                 next_state=dummy_terminal_state,
                 done=True,                # TERMINAL FLAG
-                next_legal_mask=np.ones(NUM_ACTIONS, dtype=bool) # <--- ADDED THIS
+                next_legal_mask=np.ones(NUM_ACTIONS, dtype=bool)
             )
             
             self._attempt_learning_step()
@@ -344,7 +317,6 @@ class NFSPAgent(NeuralNetworkAgent):
         
         self.br_optimizer.zero_grad()
         loss.backward()
-        # Optional: Clip gradients to stabilize training
         torch.nn.utils.clip_grad_norm_(self.br_network.parameters(), 1.0)
         self.br_optimizer.step()
         
@@ -373,13 +345,11 @@ class NFSPAgent(NeuralNetworkAgent):
         """Calculates linear decay based on current step_count."""
         if self.step_count >= self.epsilon_decay_steps:
             return self.epsilon_end
-        
-        # Linear calculation
+        # Linear
         slope = (self.epsilon_start - self.epsilon_end) / self.epsilon_decay_steps
         return self.epsilon_start - (slope * self.step_count)
     
-    def set_mode(self, mode: str):
-        self.mode = mode # 'train' or 'eval'
+    def set_mode(self, mode: str): self.mode = mode # 'train' or 'eval'
 
     def new_hand(self):
         super().new_hand()
@@ -401,14 +371,13 @@ class NFSPAgent(NeuralNetworkAgent):
             return schema.river
         return schema.preflop
     
-    # [Add save_models, load_models, save_buffers, load_buffers, etc. here from original code]
     def save_models(self, br_path: str, as_path: str):
-        # FIX 4: Save the Target Network state dict
         torch.save({'model_state_dict': self.br_network.state_dict(), 'target_model_state_dict': self.br_target_network.state_dict(), 'optimizer_state_dict': self.br_optimizer.state_dict(),'step_count': self.step_count}, br_path)
-        
         torch.save({'model_state_dict': self.as_network.state_dict(), 'optimizer_state_dict': self.as_optimizer.state_dict()}, as_path)
             
     def load_models(self, br_path: str, as_path: str):
+        if not os.path.exists(br_path):
+            raise FileNotFoundError(f"CRITICAL: Model file not found at {br_path}")
         try:
             checkpoint_br = torch.load(br_path, map_location='cpu')
             self.br_network.load_state_dict(checkpoint_br['model_state_dict'])
@@ -427,7 +396,7 @@ class NFSPAgent(NeuralNetworkAgent):
             
             print(f"Loaded NFSP models from {br_path}")
         except Exception as e:
-            print(f"Could not load NFSP models: {e}")
+            raise RuntimeError(f"CRITICAL: Failed to load models. File corrupt or architecture mismatch. Error: {e}")
 
     def save_buffers(self, rl_path: str, sl_path: str):
         """Saves buffers atomically to prevent corruption on interrupt."""

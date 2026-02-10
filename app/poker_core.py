@@ -159,8 +159,9 @@ class GameState:
             return self.stacks[player]  # All-in is the only option
 
     def get_legal_actions(self) -> List[int]:
-        """Get the complete list of legal actions for the current player."""
         player = self.to_move
+        opponent = (player + 1) % 2  # Assuming Heads-Up
+        
         if self.terminal or not self.active[player] or self.all_in[player]:
             return []
 
@@ -168,19 +169,13 @@ class GameState:
         current_max_bet = max(self.current_bets)
         amount_to_call = current_max_bet - self.current_bets[player]
 
-        # Action 0: Fold
-        # Folding is legal only if there is a bet to call.
         if amount_to_call > 0:
-            legal.append(0)
+            legal.append(0) # Fold
+        legal.append(1)     # Call
 
-        # Action 1: Check/Call
-        # This is always a legal option (checking if amount_to_call is 0).
-        legal.append(1)
-
-        # Action 2: Bet/Raise
-        # A raise is legal if the new get_min_raise_amount method returns a value.
-        if self.get_min_raise_amount() is not None:
-            legal.append(2)
+        opponent_is_all_in = self.all_in[opponent]
+        if self.get_min_raise_amount() is not None and not opponent_is_all_in:
+            legal.append(2) # Raise
             
         return sorted(legal)
 
@@ -229,8 +224,8 @@ def get_betting_order(seat_id: int, dealer_pos: int, num_players: int) -> int:
 
 def card_to_string(card_id: int) -> str:
     """Convert card ID (0-51) to string representation like '2s'."""
-    if card_id < 0 or card_id > 51:
-        return 'As'  # Fallback
+    if not (0 <= card_id <= 51):
+        raise ValueError(f"Invalid card ID: {card_id}")
         
     rank_id = card_id // 4
     suit_id = card_id % 4
@@ -242,8 +237,9 @@ def card_to_string(card_id: int) -> str:
 
 def string_to_card_id(card_str: str) -> int:
     """Convert card string like '2s' to card ID (0-51)."""
-    if len(card_str) < 2:
-        return 0
+    if not card_str or len(card_str) < 2:
+        raise ValueError(f"Invalid card string: '{card_str}'")
+
     rank_char = card_str[0]
     suit_char = card_str[1]
     
@@ -251,8 +247,8 @@ def string_to_card_id(card_str: str) -> int:
                '9': 7, 'T': 8, 'J': 9, 'Q': 10, 'K': 11, 'A': 12}
     suit_map = {'c': 0, 'd': 1, 'h': 2, 's': 3}
     
-    rank = rank_map.get(rank_char, 0)
-    suit = suit_map.get(suit_char, 0)
+    rank = rank_map[rank_char]
+    suit = suit_map[suit_char]
     
     return rank * 4 + suit
 

@@ -17,7 +17,8 @@ MOCK_CONFIG = {
     'agent': {
         'eta': 0.1, 'gamma': 0.99, 'batch_size': 4,
         'update_frequency': 1, 'learning_rate': 0.001,
-        'target_update_frequency': 100
+        'target_update_frequency': 100,
+        'epsilon_start': 0.06, 'epsilon_end': 0.01, 'epsilon_decay_steps': 100
     },
     'buffers': {
         'rl_buffer_capacity': 50, 'sl_buffer_capacity': 50,

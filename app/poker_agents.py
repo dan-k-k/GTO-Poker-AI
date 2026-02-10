@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import random
+import os
 from typing import Dict, List, Tuple, Optional
 from app.feature_extractor import FeatureExtractor
 from app.poker_core import GameState
@@ -78,7 +79,7 @@ class BRNet(nn.Module):
             # 1. Main Net selection (Select Best LEGAL Action)
             next_q_values_main = self.forward(next_states)['q_values']
             
-            # Apply Mask: Set illegal actions to negative infinity
+            # Set illegal actions to negative infinity
             masked_q_main = next_q_values_main.clone()
             masked_q_main[~next_legal_masks] = -float('inf')
             
@@ -93,10 +94,8 @@ class BRNet(nn.Module):
         return targets
 
 class ASNet(nn.Module):
-    """
-    Standard Feed-Forward Network for Classification.
-    Used for the Average Strategy (Supervised Learning).
-    """
+    """Standard Feed-Forward Network for Classification.
+    Used for the Average Strategy (Supervised Learning)."""
     def __init__(self, input_size: int = None):
         super().__init__()
         
@@ -120,27 +119,19 @@ class ASNet(nn.Module):
         logits = self.net(x)
         probs = torch.softmax(logits, dim=-1)
         
-        return {
-            'action_logits': logits,   # Used for CrossEntropyLoss
-            'action_probs': probs,     # Used for sampling actions
-            # We return q_values just to keep the interface compatible 
-            # with _get_action_from_network, even though they aren't real Q-values.
-            'q_values': logits         
-        }
+        return {'action_logits': logits,   # Used for CrossEntropyLoss
+                'action_probs': probs,     # Used for sampling actions
+                'q_values': logits}
     
 class PokerAgent:
-    """
-    Base poker agent class.
-    All agents inherit from this.
-    """
+    """Base poker agent class. All agents inherit from this."""
+
     def __init__(self, seat_id: int):
         self.seat_id = seat_id
         
     def compute_action(self, state: GameState) -> Tuple[int, Optional[int], Optional[Dict], str, Optional[PokerFeatureSchema]]:
-        """
-        Compute action for the current state.
-        Returns (action, amount) where action ∈ {0: fold, 1: call, 2: raise}
-        """
+        """Compute action for the current state.
+        Returns (action, amount) where action ∈ {0: fold, 1: call, 2: raise}"""
         raise NotImplementedError
         
     def new_hand(self):
@@ -157,10 +148,8 @@ class PokerAgent:
 
 
 class NeuralNetworkAgent(PokerAgent):
-    """
-    An agent that uses a neural network and a feature extractor to make decisions.
-    Base class for neural network-based agents.
-    """
+    """An agent that uses a neural network and a feature extractor to make decisions.
+    Base class for neural network-based agents."""
     def __init__(self, seat_id: int):
         super().__init__(seat_id)
         # The feature extractor is common to both agents
@@ -172,9 +161,7 @@ class NeuralNetworkAgent(PokerAgent):
         self.feature_extractor.new_hand()
 
     def _get_action_from_network(self, features: np.ndarray, network: nn.Module, state: GameState, use_greedy: bool = False, epsilon: float = 0.0) -> Tuple[int, Optional[int], int, Dict, bool]:
-        """
-        Returns: (action_type, amount, action_index, predictions, is_exploring_flag)
-        """
+        """Returns: (action_type, amount, action_index, predictions, is_exploring_flag)"""
         network.eval()
         with torch.no_grad():
             features_tensor = torch.FloatTensor(features).unsqueeze(0)
@@ -189,9 +176,8 @@ class NeuralNetworkAgent(PokerAgent):
         # 1. Get Mask of Legal Actions
         legal_action_mask = self._get_legal_action_mask(state)
         
-        # Fallback if no actions legal (should not happen in valid poker logic)
         if not np.any(legal_action_mask):
-            return 1, None, 1, predictions, False
+            raise RuntimeError("CRITICAL ERROR: No legal actions found for Player {self.seat_id}.")
 
         action_index = 0
         is_random_exploration = False # NEW FLAG
@@ -265,32 +251,44 @@ class NeuralNetworkAgent(PokerAgent):
         
         if action_type == 2:
             amount = self._calculate_bet_amount(sizing, state)
-            # CRITICAL SAFETY: Re-verify amount is valid
             min_raise = state.get_min_raise_amount()
-            if amount is None or (min_raise is not None and amount < min_raise and sizing != -1):
-                 # This path should be blocked by the mask, but as a fallback:
-                 return 1, None, 1, predictions, False 
+            current_stack = state.stacks[self.seat_id]
+            is_all_in = (amount == current_stack)
+            if min_raise is not None and amount < min_raise and not is_all_in:
+                raise RuntimeError(f"Agent attempted illegal raise size! Calc: {amount}, Min: {min_raise}, Stack: {current_stack}")
         
         return action_type, amount, action_index, predictions, is_random_exploration
         
     def _get_legal_action_mask(self, state: GameState) -> np.ndarray:
         mask = np.zeros(NUM_ACTIONS, dtype=bool)
-        legal_actions_from_state = state.get_legal_actions()
+        legal_actions_generic = state.get_legal_actions() # [0, 1, 2]
         
-        for i, (action_type, sizing) in enumerate(ACTION_MAP):
-            if action_type not in legal_actions_from_state:
+        if 0 in legal_actions_generic: mask[0] = True
+        if 1 in legal_actions_generic: mask[1] = True
+        if 2 not in legal_actions_generic: return mask
+
+        min_raise = state.get_min_raise_amount()
+        player_stack = state.stacks[self.seat_id]
+        for i in range(2, NUM_ACTIONS):
+            _, sizing = ACTION_MAP[i]
+            
+            if sizing == -1: 
+                mask[i] = True
                 continue
-                
-            if action_type == 2: # Raise
-                mask[i] = True
-            else:
-                mask[i] = True
-                
+
+            amount_to_call = max(state.current_bets) - state.current_bets[self.seat_id]
+            pot_after_call = state.pot + amount_to_call
+            raise_amount = int(pot_after_call * sizing)
+            total_bet = amount_to_call + raise_amount
+            
+            if total_bet >= player_stack: mask[i] = False 
+            elif min_raise is not None and total_bet < min_raise: mask[i] = False
+            else: mask[i] = True
         return mask
 
-    def _calculate_bet_amount(self, sizing: float, state: GameState) -> Optional[int]:
+    def _calculate_bet_amount(self, sizing: float, state: GameState) -> int:
         stack = state.stacks[self.seat_id]
-        if stack == 0: return None
+        if stack == 0: return 0
         if sizing == -1: return stack
 
         amount_to_call = max(state.current_bets) - state.current_bets[self.seat_id]
@@ -299,11 +297,9 @@ class NeuralNetworkAgent(PokerAgent):
         total_amount = amount_to_call + raise_amount
         
         min_raise = state.get_min_raise_amount()
-        if min_raise is not None:
-            if total_amount < min_raise:
-                total_amount = min_raise
-        
-        return min(total_amount, stack)
+        if total_amount >= stack: return stack
+        if min_raise is not None and total_amount < min_raise: return min_raise
+        return total_amount
 
 
 class GTOAgent(NeuralNetworkAgent):
@@ -314,17 +310,13 @@ class GTOAgent(NeuralNetworkAgent):
     
     def __init__(self, seat_id: int, model_path: str = "gto_average_strategy.pt"):
         super().__init__(seat_id)
-        self.model_path = model_path
-        
-        # Load the trained model
+        if not os.path.exists(model_path):
+             raise FileNotFoundError(f"CRITICAL: GTO Model not found at {model_path}. Cannot proceed.")
         self.network = ASNet()
         try:
-            self.network.load_state_dict(torch.load(model_path, map_location='cpu'))
-            self.network.eval()
-            print(f" Loaded GTO model from {model_path}")
-        except Exception as e:
-            print(f" -Could not load GTO model: {e}")
-            print("   Using random initialization")
+            self.network.load_state_dict(torch.load(model_path))
+        except RuntimeError as e:
+            raise RuntimeError(f"CRITICAL: Architecture mismatch for GTO Agent. {e}")
         
     def compute_action(self, state: GameState) -> Tuple[int, Optional[int], None, str, None]:
         features = self.feature_extractor.extract_features(state).to_vector()

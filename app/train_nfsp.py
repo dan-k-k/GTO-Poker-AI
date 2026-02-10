@@ -42,8 +42,6 @@ class NFSPTrainer:
         self.random_bot = RandomBot(seat_id=1, aggression=0.3)
         self.agents = [NFSPAgent(i, config['agent'], config['buffers'], config['simulations']['random_equity_trials'], starting_stack=stack_size) for i in range(2)]
 
-        self._load_buffers()
-
         # Training statistics (Modified to be bounded)
         self.stats = {
             # Keep only last 100 rewards for printing progress
@@ -71,9 +69,7 @@ class NFSPTrainer:
         self._load_models(suffix="_latest")
 
     def play_episode(self, env, agents, logger=None, training=False, episode_num=0):
-        """
-        Unified game loop for both training and evaluation.
-        """
+        """Unified game loop for both training and evaluation."""
         state = env.reset()
         for agent in agents:
             agent.new_hand()
@@ -142,16 +138,15 @@ class NFSPTrainer:
         print("Starting NFSP Training...")
         print(f"Total Target Episodes: {self.num_episodes}")
         
-        # Determine start point based on loaded state
         start_episode = self.hand_counter
-        
         if start_episode >= self.num_episodes:
             print(f"Training already completed ({start_episode}/{self.num_episodes}).")
-            print("Increase 'num_episodes' in config to continue training.")
             return
 
         print(f"Resuming from Episode {start_episode}...")
         session_start_time = time.time()
+        completed_normally = False
+
         try:
             for episode in range(start_episode, self.num_episodes):
                 self.hand_counter = episode 
@@ -162,78 +157,68 @@ class NFSPTrainer:
                 
                 rewards, hand_data = self.play_episode(self.env, self.agents, logger=self.logger, training=True, episode_num=episode)
                 self._update_stats(rewards)
-                if hand_data: self.plotter.update(hand_data, episode)
+                if hand_data and (episode % 100 == 0): self.plotter.update(hand_data, episode)
 
-                # 2. Evaluation Step (Uses eval_interval)
+                # 2. Evaluation Step
                 if episode > 0 and episode % self.eval_interval == 0:
                     self._evaluate_performance(episode)
 
-                # 3. Save Step (Uses save_interval)
+                # 3. Save Step
                 if episode > 0 and episode % self.save_interval == 0:
-                    current_session_duration = time.time() - session_start_time
-                    total_seconds = self.prior_training_time + current_session_duration
-                    self.stats['training_time'] = total_seconds
-                    
-                    time_str = str(datetime.timedelta(seconds=int(total_seconds)))
-                    print(f"\n[Auto-Save] Episode {episode} | Total Time: {time_str}")
-                    
-                    self._save_models(episode, suffix="_latest")
-                    self._save_buffers()
-                    self._save_state()
-                    
-                    eps = self.agents[0].get_current_epsilon()
-                    print(f"Current BR Epsilon: {eps:.4f}")
+                    self._perform_save(session_start_time, episode)
+
+            completed_normally = True
 
         except KeyboardInterrupt:
             print(f"\nTraining interrupted by user at Episode {self.hand_counter}!")
-            
-        except Exception as e:
-            print(f"\nTraining crashed with error: {e}")
-            raise e
-            
-        finally:
-            current_session_duration = time.time() - session_start_time
-            self.stats['training_time'] = self.prior_training_time + current_session_duration
-            print("Saving final state...")
-            self._save_models(self.hand_counter, suffix="_latest")
-            self._save_buffers()
-            self._save_state()
-            print("Save complete. Exiting.")
+            # Graceful save ONLY on manual interrupt
+            self._perform_save(session_start_time, self.hand_counter)
+        
+        if completed_normally:
+            print("Training completed successfully.")
+            self._perform_save(session_start_time, self.hand_counter)
+
+    def _perform_save(self, session_start_time, episode):
+        """Helper to centralize saving logic."""
+        current_session_duration = time.time() - session_start_time
+        total_seconds = self.prior_training_time + current_session_duration
+        self.stats['training_time'] = total_seconds
+        
+        time_str = str(datetime.timedelta(seconds=int(total_seconds)))
+        print(f"\n[Saving] Episode {episode} | Total Time: {time_str}")
+        
+        self._save_models(episode, suffix="_latest")
+        self._save_buffers()
+        self._save_state()
                     
     def _evaluate_performance(self, episode):
-        for agent in self.agents:
-            agent.set_mode('eval')
+        agent_to_eval = self.agents[0]
+        agent_to_eval.set_mode('eval')
+        eval_agents = [agent_to_eval, self.random_bot]
 
-        # Variables to track wins and rewards
-        wins = [0, 0]
-        total_rewards = [0, 0]
-        eval_episodes = 1000
-
+        wins = 0
+        total_profit = 0
+        eval_episodes = 1000 # Increase to 2000+ for higher precision/less luck
+        
+        bb_size = self.eval_env.big_blind
         for _ in range(eval_episodes):
-            # Use play_episode with the eval environment and NO logger
-            rewards, _ = self.play_episode(self.eval_env, self.agents, logger=None)
+            rewards, _ = self.play_episode(self.eval_env, eval_agents, logger=None)
+            nfsp_reward = rewards[0]
             
-            if rewards[0] > 0: wins[0] += 1
-            if rewards[1] > 0: wins[1] += 1
-            
-            total_rewards[0] += rewards[0]
-            total_rewards[1] += rewards[1]
+            if nfsp_reward > 0: wins += 1
+            total_profit += nfsp_reward
 
-        # Calculate average reward for Agent 0 (or average of both if symmetric)
-        avg_reward_agent0 = total_rewards[0] / eval_episodes
-        
-        print(f"Eval Episode {episode} | Agent 0 Win Rate: {wins[0]/eval_episodes:.2%} | Avg Reward: {avg_reward_agent0:.2f}")
-        
-        # --- FIX: Save Best Model Logic ---
-        if avg_reward_agent0 > self.best_avg_reward:
-            print(f"New Best Performance! (Reward: {avg_reward_agent0:.2f} > {self.best_avg_reward:.2f})")
-            self.best_avg_reward = avg_reward_agent0
+        avg_reward = total_profit / eval_episodes
+        win_rate = wins / eval_episodes
+        bb_per_100 = (avg_reward / bb_size) * 100
+
+        print(f"Eval Episode {episode} vs RandomBot | Win Rate: {win_rate:.2%} | Avg Profit: {avg_reward:.2f} | Strength: {bb_per_100:.2f} bb/100")
+        if avg_reward > self.best_avg_reward:
+            print(f"New Best Performance found! (Avg Profit: {avg_reward:.2f} > Previous: {self.best_avg_reward:.2f})")
+            self.best_avg_reward = avg_reward
             self._save_models(episode, suffix="_best")
-        # ----------------------------------
-
-        # Switch back to train mode
-        for agent in self.agents:
-            agent.set_mode('train')
+            
+        agent_to_eval.set_mode('train')
 
     def _save_state(self):
         """Saves the current training metadata AND stats."""
@@ -262,30 +247,45 @@ class NFSPTrainer:
                 
                 if "stats" in data:
                     saved_stats = data["stats"]
-                    self.stats['episode_rewards'] = [deque(l, maxlen=100) for l in saved_stats.get('episode_rewards', [[],[]])]
-                    self.stats['buffer_sizes_rl'] = [deque(l, maxlen=100) for l in saved_stats.get('buffer_sizes_rl', [[],[]])]
-                    self.stats['buffer_sizes_sl'] = [deque(l, maxlen=100) for l in saved_stats.get('buffer_sizes_sl', [[],[]])]
-                    self.prior_training_time = saved_stats.get('training_time', 0)
-                    self.stats['training_time'] = self.prior_training_time
-                    print(" - Restored console statistics (smooth graphs will continue).")
+                try:
+                    self.stats['episode_rewards'] = [deque(l, maxlen=100) for l in saved_stats['episode_rewards']]
+                    self.stats['buffer_sizes_rl'] = [deque(l, maxlen=100) for l in saved_stats['buffer_sizes_rl']]
+                    self.stats['buffer_sizes_sl'] = [deque(l, maxlen=100) for l in saved_stats['buffer_sizes_sl']]
+                    self.prior_training_time = saved_stats['training_time'] # Will KeyError if missing
+                except KeyError as e:
+                    raise KeyError(f"Corrupt training_state.json: Missing key {e}. Cannot restore training history.")
                     
             print(f"Resuming from Hand {self.hand_counter} (Best Reward: {self.best_avg_reward})")
         else:
-            print("No previous training state found. Starting from Episode 0.")
+            model_dir = os.path.join(self.output_dir, "models")
+            buffer_dir = os.path.join(self.output_dir, "buffers")
+            
+            has_models = os.path.isdir(model_dir) and os.listdir(model_dir)
+            has_buffers = os.path.isdir(buffer_dir) and os.listdir(buffer_dir)
+
+            if has_models or has_buffers:
+                raise RuntimeError(f"CRITICAL: No 'training_state.json' found, but existing models/buffers were detected in {self.output_dir}. "
+                    "Refusing to silently restart and overwrite data. "
+                    "Clear the directory to start fresh or restore the state file.")
+
+            print("No previous training state or data found. Starting from Episode 0.")
             self.hand_counter = 0
             self.best_avg_reward = -float('inf')
 
     def _load_buffers(self):
-        """Helper to load replay buffers for all agents."""
+        """Helper to load replay buffers. CRASHES if state exists but buffers don't."""
         buffer_dir = os.path.join(self.output_dir, "buffers")
-        if not os.path.isdir(buffer_dir):
-            print("No buffer directory found, skipping buffer loading.")
-            return
+        
+        if self.hand_counter > 0 and not os.path.isdir(buffer_dir):
+            raise FileNotFoundError(f"Resuming from Episode {self.hand_counter}, but buffer directory is missing: {buffer_dir}")
+        if not os.path.isdir(buffer_dir): return # Safe to skip only if episode is 0
 
-        print("Attempting to load replay buffers...")
+        print("Loading replay buffers...")
         for i, agent in enumerate(self.agents):
             rl_path = os.path.join(buffer_dir, f"agent{i}_rl_buffer.pkl")
             sl_path = os.path.join(buffer_dir, f"agent{i}_sl_buffer.pkl")
+            if not os.path.exists(rl_path) or not os.path.exists(sl_path):
+                 raise FileNotFoundError(f"Missing buffer file: {rl_path}")
             agent.load_buffers(rl_path, sl_path)
 
     def _save_buffers(self):
@@ -300,28 +300,30 @@ class NFSPTrainer:
             agent.save_buffers(rl_path, sl_path)
 
     def _load_models(self, suffix: str):
-        """Helper to load models for all agents with a given suffix."""
+        """Helper to load models. CRASHES if files are missing but expected."""
         save_dir = os.path.join(self.output_dir, "models")
-        if not os.path.isdir(save_dir):
-            print("No models directory found, starting from scratch.")
-            return
+        
+        if self.hand_counter > 0 and not os.path.isdir(save_dir):
+            raise FileNotFoundError(f"Training state indicates Episode {self.hand_counter}, but no model directory found at {save_dir}.")
 
-        print(f"Attempting to load models with suffix '{suffix}' to resume training...")
-        try:
-            # Check if the first agent's model exists as a proxy for all
-            br_path_check = os.path.join(save_dir, f"nfsp_agent0_br{suffix}.pt")
-            if not os.path.exists(br_path_check):
-                print("No models found to load. Starting from scratch.")
-                return
-
-            for i, agent in enumerate(self.agents):
-                br_path = os.path.join(save_dir, f"nfsp_agent{i}_br{suffix}.pt")
-                as_path = os.path.join(save_dir, f"nfsp_agent{i}_as{suffix}.pt")
-                agent.load_models(br_path, as_path)
-                
-            print("Models loaded successfully. Resuming training.")
-        except Exception as e:
-            print(f"Could not load models: {e}. Starting from scratch.")
+        print(f"Attempting to load models with suffix '{suffix}'...")
+        
+        for i, agent in enumerate(self.agents):
+            br_path = os.path.join(save_dir, f"nfsp_agent{i}_br{suffix}.pt")
+            as_path = os.path.join(save_dir, f"nfsp_agent{i}_as{suffix}.pt")
+            
+            if not os.path.exists(br_path) or not os.path.exists(as_path):
+                if self.hand_counter == 0:
+                    # Check if ANY model file exists to prevent accidental overwrite
+                    if os.path.exists(br_path) or os.path.exists(as_path):
+                        raise FileExistsError(f"Partial model files found at {br_path} but expected fresh start. Check directory.")
+                    
+                    print("No existing models found for Episode 0. Starting fresh.")
+                    return
+                else:
+                    raise FileNotFoundError(f"Missing model file: {br_path}. Cannot resume training.")
+            agent.load_models(br_path, as_path)
+        print("Models loaded successfully.")
     
     def _save_models(self, episode: int, suffix: str):
         """Save agent models with a specific suffix (e.g., '_best', '_latest')."""
@@ -336,16 +338,11 @@ class NFSPTrainer:
 def main(config_path: str = "config.yaml"):
     """Main training function."""
     # 1. Load configuration from the YAML file path
-    try:
-        with open(config_path, "r") as f:
-            config = yaml.safe_load(f)
-    except FileNotFoundError:
-        print(f"Error: Configuration file not found at {config_path}")
-        return # Exit gracefully if config is missing
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
         
     print("--- Configuration Loaded ---")
     print(json.dumps(config, indent=2))
-    print("--------------------------")
 
     # 2. Pass the entire config object to the trainer
     trainer = NFSPTrainer(config=config)
