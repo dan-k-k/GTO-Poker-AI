@@ -223,7 +223,6 @@ def get_betting_order(seat_id: int, dealer_pos: int, num_players: int) -> int:
     relative_position = (seat_id - dealer_pos) % num_players
     return (relative_position - 1 + num_players) % num_players
 
-
 # =============================================================================
 # UTILITY FUNCTIONS
 # =============================================================================
@@ -241,7 +240,6 @@ def card_to_string(card_id: int) -> str:
     
     return ranks[rank_id] + suits[suit_id]
 
-
 def string_to_card_id(card_str: str) -> int:
     """Convert card string like '2s' to card ID (0-51)."""
     if len(card_str) < 2:
@@ -257,7 +255,6 @@ def string_to_card_id(card_str: str) -> int:
     suit = suit_map.get(suit_char, 0)
     
     return rank * 4 + suit
-
 
 def get_street_name(stage: int) -> str:
     """Convert stage number to street name."""

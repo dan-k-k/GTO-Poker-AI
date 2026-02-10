@@ -27,6 +27,18 @@ class TestTexasHoldemEnv(unittest.TestCase):
         if hole_cards is None:
             hole_cards = [cards(['As', 'Ks']), cards(['Ad', 'Kd'])]
             
+        # --- FIX START: Remove manually assigned cards from the deck ---
+        used_cards = []
+        if hole_cards:
+            for hand in hole_cards:
+                used_cards.extend(hand)
+        if community:
+            used_cards.extend(community)
+            
+        # Remove these specific integers from the deck's list of available cards
+        env.deck.cards = [c for c in env.deck.cards if c not in used_cards]
+        # --- FIX END ---
+
         # Capture the state of the stacks *before* blinds are posted.
         starting_stacks_for_hand = stacks.copy()
             

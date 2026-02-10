@@ -188,6 +188,7 @@ class TestHyperRigorousHoldemEnv(unittest.TestCase):
         # P0 is Dealer. P1 is SB (100 chips), P2 is BB (100 chips).
         # After setup: SB posts 10, BB posts 20. Stacks: [2000, 90, 80]. Pot: 30. Turn: P0.
         env = self._setup_hand(num_players=3, hole_cards=hole_cards, stacks=[2000, 100, 100], dealer_pos=0)
+        env.deck.cards = cards(['2s', '3h', '4c', '5d', '7s'])
 
         # Action: P0 (UTG) raises to 200.
         # This is an overbet to put both other players all-in.
@@ -230,4 +231,37 @@ class TestHyperRigorousHoldemEnv(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+def test_simultaneous_elimination_results_in_tournament_winner(self):
+        """Tests that a hand eliminating multiple players correctly ends the tournament."""
+        hole_cards = [cards(['Ac', 'Ad']), cards(['Kc', 'Kd']), cards(['Qc', 'Qd'])]
+        # Setup with starting stacks. The helper will correctly post the blinds.
+        # P0 is Dealer. P1 is SB (100 chips), P2 is BB (100 chips).
+        env = self._setup_hand(num_players=3, hole_cards=hole_cards, stacks=[2000, 100, 100], dealer_pos=0)
+
+        # --- FIX: Rig the deck to ensure P0 (AA) wins ---
+        # We replace the deck with 5 safe low cards. 
+        # Note: Deck.deal() pops from the end, so we list them in reverse order of dealing if order mattered.
+        # Here, just a board of rags is sufficient.
+        env.deck.cards = cards(['2s', '3h', '4c', '5d', '7s']) 
+        # ------------------------------------------------
+
+        # Action: P0 (UTG) raises to 200.
+        state, done = env.step(action=2, amount=200)
+        self.assertFalse(done)
+
+        # Action: P1 (SB) calls all-in.
+        state, done = env.step(action=1) 
+        self.assertFalse(done)
+
+        # Action: P2 (BB) calls all-in.
+        # This triggers the runout using our rigged deck.
+        state, done = env.step(action=1)
+        
+        self.assertTrue(done, "Hand should be terminal after final all-in call")
+
+        # Now this assertion will pass 100% of the time
+        self.assertEqual(state.win_reason, 'tournament_winner')
+        self.assertEqual(state.winners, [0], "Player 0 should be the sole winner")
+        self.assertEqual(state.surviving_players, [0], "Only P0 should be in surviving_players")
 

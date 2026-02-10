@@ -1,5 +1,6 @@
 # app/feature_extractor.py 
 import numpy as np
+import random
 from app.poker_core import GameState, HandEvaluator
 from app.poker_feature_schema import PokerFeatureSchema, StreetFeatures, BettingRoundFeatures
 from typing import TYPE_CHECKING
@@ -62,7 +63,7 @@ class FeatureExtractor:
         self._action_counts_this_street = [0, 0, 0, 0]
         self.last_aggressor = None
 
-    def extract_features(self, state: GameState, agent: 'NFSPAgent' = None, skip_random_equity: bool = False) -> PokerFeatureSchema:
+    def extract_features(self, state: GameState, skip_random_equity: bool = False) -> PokerFeatureSchema:
         """
         Main extraction method. Populates the clean schema with both historical and real-time data.
         """
@@ -99,7 +100,7 @@ class FeatureExtractor:
             self._street_features_extracted[current_stage] = True
 
         # 4. Populate ALL dynamic features for the IMMEDIATE decision
-        self._update_dynamic_features(state, agent)
+        self._update_dynamic_features(state)
 
         return self.schema
 
@@ -115,7 +116,7 @@ class FeatureExtractor:
             self.schema.hand.high_card_rank = ranks[1] / 12.0
             self.schema.hand.low_card_rank = ranks[0] / 12.0
 
-    def _update_dynamic_features(self, state: GameState, agent: 'NFSPAgent'):
+    def _update_dynamic_features(self, state: GameState):
         """Populates the `dynamic` part of the schema. Called on every action."""
         dyn_schema = self.schema.dynamic
         bb_size = state.big_blind if state.big_blind > 0 else 1
@@ -135,29 +136,6 @@ class FeatureExtractor:
         dyn_schema.pot_bb = self._normalize_log(pot_bb_raw, MAX_POT_BB)
         dyn_schema.effective_stack_bb = self._normalize_log(effective_stack_bb_raw, STARTING_STACK_BB)
 
-        # === HAND STRENGTH ===
-        # Case 1: Post-flop with an agent -> Use intelligent equity simulation
-        if state.stage > 0 and agent is not None:
-            historical_context = {
-                'betting_history': self._betting_history,
-                'action_counts': self._action_counts_this_street,
-                'last_aggressor': self.last_aggressor
-            }
-            dyn_schema.hand_strength = agent._calculate_intelligent_equity(
-                my_hole_cards=state.hole_cards[self.seat_id],
-                community_cards=state.community,
-                historical_context=historical_context
-            )
-        # Case 2: Post-flop WITHOUT an agent -> Fallback to the street's random equity
-        elif state.stage > 0:
-            # Get the schema for the current street
-            current_street_cards_schema = self._get_street_cards_schema(state.stage)
-            # Use the random_strength that was just calculated (or skipped)
-            dyn_schema.hand_strength = current_street_cards_schema.random_strength
-        # Case 3: Pre-flop -> Always use the static lookup
-        else:
-            dyn_schema.hand_strength = self._get_preflop_strength(state.hole_cards[self.seat_id])
-
         # --- Current betting round summary (for the in-progress street) ---
         stage = state.stage
         dyn_schema.current_betting_round.my_bets_opened = self._normalize_clip(self._betting_history['my_bets_opened'][stage], 10.0)
@@ -173,15 +151,30 @@ class FeatureExtractor:
         else:
             dyn_schema.player_has_initiative = 0.0
         
-        # Pot Odds, SPR, etc.
-        amount_to_call = max(state.current_bets) - state.current_bets[self.seat_id]
-        if amount_to_call > 0:
-            final_pot = state.pot + amount_to_call
-            if final_pot > 0:
-                dyn_schema.pot_odds = amount_to_call / final_pot
+        # --- Pot Odds (Corrected for All-In/Effective Stacks) ---
+        raw_to_call = max(state.current_bets) - state.current_bets[self.seat_id]
+        my_remaining_stack = state.stacks[self.seat_id]
+        
+        # You can only ever pay what you have
+        actual_to_call = min(raw_to_call, my_remaining_stack)
+        
+        if actual_to_call > 0:
+            # If the opponent bet MORE than we can match, 'excess' money 
+            excess_bet = max(0, raw_to_call - actual_to_call)
+            
+            # The pot we are actually playing for (Effective Pot)
+            effective_pot_now = state.pot - excess_bet
+            final_effective_pot = effective_pot_now + actual_to_call
+            
+            if final_effective_pot > 0:
+                # Break-Even Equity % needed to call
+                dyn_schema.pot_odds = actual_to_call / final_effective_pot
+            
+            # For 'bet_faced_ratio', we generally want to know how big the bet is 
             if state.pot > 0:
-                dyn_schema.bet_faced_ratio = amount_to_call / state.pot
-        else: # Reset if there's no bet to call
+                dyn_schema.bet_faced_ratio = actual_to_call / (state.pot - excess_bet)
+                
+        else:
             dyn_schema.pot_odds = 0.0
             dyn_schema.bet_faced_ratio = 0.0
 
@@ -454,38 +447,38 @@ class FeatureExtractor:
         return None, []
 
     def _calculate_random_equity(self, my_hole: list, community: list) -> float:
-        """
-        Fast, simple Monte Carlo equity calculation against a single random opponent hand.
-        """
-        # Use the value stored from the config file
         trials = self.random_equity_trials
+        if not my_hole: return 0.5
 
-        if not my_hole:
-            return 0.5
-
+        known_cards = set(my_hole + community)
+        deck = np.array([c for c in range(52) if c not in known_cards], dtype=int)
+        
+        cards_to_draw = 2 + (5 - len(community))
+                
         wins = 0
-        deck = [c for c in range(52) if c not in my_hole and c not in community]
-
+        
+        # We get the evaluator instance once
+        evaluator = self.evaluator
+        
         for _ in range(trials):
-            if len(deck) < 2: break
+            # Fast shuffle is often cheaper than complex sampling for small decks
+            np.random.shuffle(deck) 
             
-            shuffled_deck = np.random.permutation(deck)
-            opp_hole = list(shuffled_deck[:2])
+            # Slice the needed cards
+            draw = deck[:cards_to_draw]
+            opp_hole = draw[:2]
+            runout = draw[2:]
             
-            remaining_deck = shuffled_deck[2:]
+            # Combine board (using list unpacking is faster than concatenation for small lists)
+            final_board = [*community, *runout]
             
-            num_cards_to_deal = 5 - len(community)
-            if len(remaining_deck) < num_cards_to_deal: continue
-
-            board_runout = remaining_deck[:num_cards_to_deal]
-            final_board = community + list(board_runout)
+            # Evaluate
+            my_rank = evaluator.best_hand_rank(my_hole, final_board)
+            opp_rank = evaluator.best_hand_rank(opp_hole, final_board)
             
-            my_rank = self.evaluator.best_hand_rank(my_hole, final_board)
-            opp_rank = self.evaluator.best_hand_rank(opp_hole, final_board)
-
             if my_rank > opp_rank: wins += 1.0
             elif my_rank == opp_rank: wins += 0.5
-        
+            
         return wins / trials if trials > 0 else 0.5
     
     def _get_preflop_equity_key(self, hole_cards: list) -> str:
@@ -519,28 +512,13 @@ class FeatureExtractor:
         return PREFLOP_EQUITY.get(key, 0.0)
     
     def _get_street_cards_schema(self, stage: int) -> StreetFeatures:
-        """Helper to get the street cards schema for a given stage."""
-        if stage == 0:
-            return self.schema.preflop_cards
-        elif stage == 1:
-            return self.schema.flop_cards
-        elif stage == 2:
-            return self.schema.turn_cards
-        elif stage == 3:
-            return self.schema.river_cards
-        else:
-            raise ValueError(f"Invalid stage: {stage}")
+        options = [self.schema.preflop_cards, self.schema.flop_cards, 
+                   self.schema.turn_cards, self.schema.river_cards]
+        return options[stage]
     
     def _get_betting_history_schema(self, stage: int) -> BettingRoundFeatures:
-        """Helper to get the betting history schema for a given stage."""
-        if stage == 0:
-            return self.schema.preflop_betting
-        elif stage == 1:
-            return self.schema.flop_betting
-        elif stage == 2:
-            return self.schema.turn_betting
-        else:
-            raise ValueError(f"Invalid stage for betting history: {stage}")
+        options = [self.schema.preflop_betting, self.schema.flop_betting, self.schema.turn_betting]
+        return options[stage]
     
     def update_betting_action(self, player_id: int, action: int, state_before_action, stage: int):
         """

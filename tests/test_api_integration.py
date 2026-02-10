@@ -1,4 +1,4 @@
-# tests/test_integration_features.py
+# tests/test_api_integration.py
 
 import unittest
 from unittest.mock import patch, MagicMock

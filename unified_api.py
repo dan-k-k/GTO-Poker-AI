@@ -1,5 +1,4 @@
 # unified_api.py
-
 import os
 import uuid
 import base64
@@ -57,7 +56,7 @@ def load_global_model():
     print("Loading Global AI Model...")
     buffer_config = {'rl_buffer_capacity': 10000, 'sl_buffer_capacity': 10000}
     
-    agent = NFSPAgent(seat_id=1, agent_config=STANDARD_AGENT_CONFIG, buffer_config=buffer_config, random_equity_trials=500, intelligent_equity_trials=500)
+    agent = NFSPAgent(seat_id=1, agent_config=STANDARD_AGENT_CONFIG, buffer_config=buffer_config, random_equity_trials=500, starting_stack=200)
     
     as_path = "training_output/models/nfsp_agent1_as_latest.pt"
     br_path = "training_output/models/nfsp_agent1_br_latest.pt"
@@ -205,7 +204,7 @@ def predict_optimal_action(input_data: GameStateInput):
     features_vector = features_schema.to_vector()
     
     network = GLOBAL_MODEL_AGENT.as_network
-    action_type, amount, _, _ = GLOBAL_MODEL_AGENT._get_action_from_network(
+    action_type, amount, _, _, _ = GLOBAL_MODEL_AGENT._get_action_from_network(
         features_vector, network, current_state
     )
 
@@ -245,12 +244,7 @@ async def get_game_state(request: Request):
         env = TexasHoldemEnv(num_players=2)
         env.reset()
         
-        agent = NFSPAgent(
-            seat_id=1, 
-            agent_config=STANDARD_AGENT_CONFIG, 
-            buffer_config={'rl_buffer_capacity': 10000, 'sl_buffer_capacity': 10000},
-            random_equity_trials=500, intelligent_equity_trials=500
-        )
+        agent = NFSPAgent(seat_id=1, agent_config=STANDARD_AGENT_CONFIG, buffer_config={'rl_buffer_capacity': 10000, 'sl_buffer_capacity': 10000}, random_equity_trials=500, starting_stack=200)
         
         # Share Global Networks
         if GLOBAL_MODEL_AGENT:

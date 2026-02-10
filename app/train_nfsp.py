@@ -6,8 +6,9 @@ import os
 import torch
 import numpy as np
 import json
-import time
 import yaml
+import time
+import datetime
 from typing import Dict, List
 from app.TexasHoldemEnv import TexasHoldemEnv
 from app.nfsp_components import NFSPAgent
@@ -32,29 +33,16 @@ class NFSPTrainer:
 
         # Read the simulation config values
         self.random_trials = config['simulations']['random_equity_trials']
-        self.intelligent_trials = config['simulations']['intelligent_equity_trials']
 
         # Initialize environments and agents
-        self.env = TexasHoldemEnv(num_players=2, starting_stack=200)
-        self.eval_env = TexasHoldemEnv(num_players=2, starting_stack=200)
-        self.random_bot = RandomBot(seat_id=1, aggression=0.3)
+        stack_size = config['simulations'].get('starting_stack', 200) 
 
-        self.agents = []
-        for i in range(2):
-            agent = NFSPAgent(
-                seat_id=i,
-                agent_config=config['agent'],
-                buffer_config=config['buffers'],
-                random_equity_trials=self.random_trials,
-                intelligent_equity_trials=self.intelligent_trials
-            )
-            self.agents.append(agent)
+        self.env = TexasHoldemEnv(num_players=2, starting_stack=stack_size)
+        self.eval_env = TexasHoldemEnv(num_players=2, starting_stack=stack_size)
+        self.random_bot = RandomBot(seat_id=1, aggression=0.3)
+        self.agents = [NFSPAgent(i, config['agent'], config['buffers'], config['simulations']['random_equity_trials'], starting_stack=stack_size) for i in range(2)]
 
         self._load_buffers()
-
-        # === Give agents a reference to their opponent's network === 
-        self.agents[0].opponent_as_network = self.agents[1].as_network
-        self.agents[1].opponent_as_network = self.agents[0].as_network
 
         # Training statistics (Modified to be bounded)
         self.stats = {
@@ -64,6 +52,7 @@ class NFSPTrainer:
             'buffer_sizes_sl': [deque(maxlen=100), deque(maxlen=100)],
             'training_time': 0
         }
+        self.prior_training_time = 0
 
         # Track best performance
         self.best_avg_reward = -float('inf')
@@ -72,178 +61,219 @@ class NFSPTrainer:
         csv_path = os.path.join(self.output_dir, "metrics.csv")
         plot_path = os.path.join(self.output_dir, "training_dashboard.png")
         log_path = os.path.join(self.output_dir, "hand_history.log")
-        self.logger = HandHistoryLogger(log_file=log_path, dump_features=config['logging']['dump_features'])
+        self.logger = HandHistoryLogger(log_file=log_path, dump_features=config['logging']['dump_features'], verbose=config['logging']['verbose'])
         self.hand_counter = 0
         self.plotter = LivePlotter(plot_file=plot_path, csv_file=csv_path)
         
         # === Attempt to load latest models to resume training ===
+        self._load_state()
+        self._load_buffers()
         self._load_models(suffix="_latest")
-        
-    def train(self):
-        """Main training loop."""
-        print("Starting NFSP Training...")
-        print(f"Episodes: {self.num_episodes}")
-        print(f"Agents: {len(self.agents)}")
-        
-        start_time = time.time()
-        
-        try:
-            for episode in range(self.num_episodes):
-                # Pass episode number to _run_episode
-                episode_rewards = self._run_episode(episode)
-                
-                # Update statistics
-                for i, reward in enumerate(episode_rewards):
-                    self.stats['episode_rewards'][i].append(reward)
-                    self.stats['buffer_sizes_rl'][i].append(len(self.agents[i].rl_buffer))
-                    self.stats['buffer_sizes_sl'][i].append(len(self.agents[i].sl_buffer))
-                
-                # Periodic evaluation
-                if episode % self.eval_interval == 0 and episode > 0:
-                    self._evaluate_performance(episode)
-                    self._save_models(episode, suffix="_latest")
-                    
-                # Progress reporting
-                if episode % 100 == 0:
-                    avg_reward_0 = np.mean(self.stats['episode_rewards'][0]) if self.stats['episode_rewards'][0] else 0
-                    avg_reward_1 = np.mean(self.stats['episode_rewards'][1]) if self.stats['episode_rewards'][1] else 0
-                    print(f"Episode {episode}: Agent0={avg_reward_0:.2f}, Agent1={avg_reward_1:.2f}")
 
-        except KeyboardInterrupt:
-            print("\nTraining interrupted.")
-
-        finally:
-            self.stats['training_time'] = time.time() - start_time
-            print(f"\nTraining completed or interrupted after {self.stats['training_time']:.2f} seconds.\nContinue training with python -m app.train_nfsp.")
-            
-            # Final save of stats and buffers
-            self._save_buffers()
-        
-    def _run_episode(self, episode: int) -> List[float]:
-        """Run a single training episode with logging."""
-        self.hand_counter += 1
-        
-        # Start a new hand with preserved stacks if the tournament is ongoing.
-        state = self.env.reset()
-        
-        for agent in self.agents:
+    def play_episode(self, env, agents, logger=None, training=False, episode_num=0):
+        """
+        Unified game loop for both training and evaluation.
+        """
+        state = env.reset()
+        for agent in agents:
             agent.new_hand()
-        
-        self.logger.log_start_hand(episode, self.hand_counter, state)
-        last_stage = 0
-        
-        episode_rewards = [0.0, 0.0]
+
+        # Logging start
+        if logger:
+            hand_id = getattr(self, 'hand_counter', 0)
+            logger.log_start_hand(episode_num, hand_id, state)
+
         initial_stacks = state.starting_stacks_this_hand.copy()
-        
+
         while not state.terminal:
-            player_to_move = state.to_move
-            agent = self.agents[player_to_move]
-            
+            player_idx = state.to_move
+            agent = agents[player_idx]
             state_before = state.copy()
-            
-            # Unpack the `features_schema` object
-            action, amount, predictions, policy_name, features_schema = agent.compute_action(state)
-            
-            # Pass the object to the logger
-            self.logger.log_action(
-                player_to_move, action, amount, state_before, 
-                predictions, policy_name, features_schema
-            )
 
-            if features_schema:
-                # Add the `predictions` object to this call
-                self.logger.log_feature_dump_if_needed(state_before, features_schema, predictions)
+            # Compute Action
+            action, amount, preds, policy, schema = agent.compute_action(state)
 
-            next_state, done = self.env.step(action, amount)
+            # Logging (Only if logger is provided)
+            if logger:
+                logger.log_action(player_idx, action, amount, state_before, preds, policy, schema)
+                if schema:
+                    logger.log_feature_dump_if_needed(state_before, schema, preds)
+
+            # Step Environment
+            next_state, done = env.step(action, amount)
+
+            # Observations (Crucial for NFSP internal state tracking)
+            for obs_agent in agents:
+                obs_agent.observe((action, amount), player_idx, state_before, next_state)
             
-            # Let all agents observe the action
-            for i, obs_agent in enumerate(self.agents):
-                obs_agent.observe((action, amount), player_to_move, state_before, next_state)
-            
+            # Log Street changes
+            if logger and next_state.stage > state_before.stage:
+                logger.log_street(next_state)
+
             state = next_state
-            
-            if state.stage > last_stage:
-                self.logger.log_street(state)
-                last_stage = state.stage
 
-        # Calculate final rewards and let agents observe showdown
+        # End of Hand / Showdown
         final_stacks = state.stacks
-        for i in range(len(self.agents)):
-            episode_rewards[i] = final_stacks[i] - initial_stacks[i]
-            
-        # Create showdown state for agents
-        showdown_state = {
+        rewards = [final_stacks[i] - initial_stacks[i] for i in range(len(agents))]
+
+        showdown_data = {
             'stacks_before': {i: initial_stacks[i] for i in range(len(initial_stacks))},
             'stacks_after': {i: final_stacks[i] for i in range(len(final_stacks))}
         }
+
+        # Finalize Agents (This triggers the final RL buffer push)
+        for agent in agents:
+            agent.observe_showdown(showdown_data)
+
+        if logger:
+            return rewards, logger.log_end_hand(rewards, state)
         
+        return rewards, None
+
+    def _update_stats(self, rewards):
+            """Helper to update deque stats."""
+            for i, r in enumerate(rewards):
+                self.stats['episode_rewards'][i].append(r)
+                self.stats['buffer_sizes_rl'][i].append(len(self.agents[i].rl_buffer))
+                self.stats['buffer_sizes_sl'][i].append(len(self.agents[i].sl_buffer))
+                
+    def train(self):
+        """Main training loop with Resume and Interrupt handling."""
+        print("Starting NFSP Training...")
+        print(f"Total Target Episodes: {self.num_episodes}")
+        
+        # Determine start point based on loaded state
+        start_episode = self.hand_counter
+        
+        if start_episode >= self.num_episodes:
+            print(f"Training already completed ({start_episode}/{self.num_episodes}).")
+            print("Increase 'num_episodes' in config to continue training.")
+            return
+
+        print(f"Resuming from Episode {start_episode}...")
+        session_start_time = time.time()
+        try:
+            for episode in range(start_episode, self.num_episodes):
+                self.hand_counter = episode 
+
+                # 1. Training Step
+                for agent in self.agents:
+                    agent.set_mode('train')
+                
+                rewards, hand_data = self.play_episode(self.env, self.agents, logger=self.logger, training=True, episode_num=episode)
+                self._update_stats(rewards)
+                if hand_data: self.plotter.update(hand_data, episode)
+
+                # 2. Evaluation Step (Uses eval_interval)
+                if episode > 0 and episode % self.eval_interval == 0:
+                    self._evaluate_performance(episode)
+
+                # 3. Save Step (Uses save_interval)
+                if episode > 0 and episode % self.save_interval == 0:
+                    current_session_duration = time.time() - session_start_time
+                    total_seconds = self.prior_training_time + current_session_duration
+                    self.stats['training_time'] = total_seconds
+                    
+                    time_str = str(datetime.timedelta(seconds=int(total_seconds)))
+                    print(f"\n[Auto-Save] Episode {episode} | Total Time: {time_str}")
+                    
+                    self._save_models(episode, suffix="_latest")
+                    self._save_buffers()
+                    self._save_state()
+                    
+                    eps = self.agents[0].get_current_epsilon()
+                    print(f"Current BR Epsilon: {eps:.4f}")
+
+        except KeyboardInterrupt:
+            print(f"\nTraining interrupted by user at Episode {self.hand_counter}!")
+            
+        except Exception as e:
+            print(f"\nTraining crashed with error: {e}")
+            raise e
+            
+        finally:
+            current_session_duration = time.time() - session_start_time
+            self.stats['training_time'] = self.prior_training_time + current_session_duration
+            print("Saving final state...")
+            self._save_models(self.hand_counter, suffix="_latest")
+            self._save_buffers()
+            self._save_state()
+            print("Save complete. Exiting.")
+                    
+    def _evaluate_performance(self, episode):
         for agent in self.agents:
-            agent.observe_showdown(showdown_state)
+            agent.set_mode('eval')
 
-        # Capture the data returned by the logger
-        hand_data = self.logger.log_end_hand(episode_rewards, state)
-        
-        if hand_data:
-            self.plotter.update(hand_data)
-        
-        # Update the actual image file periodically (e.g., every 50 hands)
-        if self.hand_counter % 100 == 0:
-            self.plotter.save_plot()
-            
-        return episode_rewards
-            
-    def _evaluate_performance(self, episode: int):
-        """Evaluate agent performance against random baseline AND save best models."""
-        print(f"\n--- Evaluation at Episode {episode} ---")
-        
-        # Test each agent against RandomBot
-        for i, agent in enumerate(self.agents):
-            wins = 0
-            total_reward = 0
-            eval_episodes = 100
-            
-            self.random_bot.seat_id = 1 - i  # Just update the seat_id
-            
-            eval_agents = [None, None]
-            eval_agents[i] = agent
-            eval_agents[1-i] = self.random_bot
-            
-            for _ in range(eval_episodes):
-                # Run episode by just resetting the existing environment
-                state = self.eval_env.reset()
-                agent.new_hand()
-                self.random_bot.new_hand()
-                
-                initial_stack = state.starting_stacks_this_hand[i]
-                
-                while not state.terminal:
-                    player_to_move = state.to_move
-                    current_agent = eval_agents[player_to_move]
-                    
-                    # Unpack all 5 values to avoid an error
-                    action, amount, _, _, _ = current_agent.compute_action(state)
-                    state, _ = self.eval_env.step(action, amount)
-                    
-                final_stack = state.stacks[i]
-                reward = final_stack - initial_stack
-                total_reward += reward
-                
-                if reward > 0:
-                    wins += 1
-                    
-            win_rate = wins / eval_episodes
-            avg_reward = total_reward / eval_episodes
-            
-            print(f"Agent {i}: Win Rate = {win_rate:.2%}, Avg Reward = {avg_reward:.2f}")
+        # Variables to track wins and rewards
+        wins = [0, 0]
+        total_rewards = [0, 0]
+        eval_episodes = 1000
 
-            # Check if this is the new best performance (track Agent 0)
-            if i == 0 and avg_reward > self.best_avg_reward:
-                self.best_avg_reward = avg_reward
-                print(f"New best performance for Agent 0! Avg Reward: {avg_reward:.2f}. Saving best models...")
-
-                self._save_models(episode, suffix="_best")
+        for _ in range(eval_episodes):
+            # Use play_episode with the eval environment and NO logger
+            rewards, _ = self.play_episode(self.eval_env, self.agents, logger=None)
             
-        print("--- End Evaluation ---\n")
+            if rewards[0] > 0: wins[0] += 1
+            if rewards[1] > 0: wins[1] += 1
+            
+            total_rewards[0] += rewards[0]
+            total_rewards[1] += rewards[1]
+
+        # Calculate average reward for Agent 0 (or average of both if symmetric)
+        avg_reward_agent0 = total_rewards[0] / eval_episodes
+        
+        print(f"Eval Episode {episode} | Agent 0 Win Rate: {wins[0]/eval_episodes:.2%} | Avg Reward: {avg_reward_agent0:.2f}")
+        
+        # --- FIX: Save Best Model Logic ---
+        if avg_reward_agent0 > self.best_avg_reward:
+            print(f"New Best Performance! (Reward: {avg_reward_agent0:.2f} > {self.best_avg_reward:.2f})")
+            self.best_avg_reward = avg_reward_agent0
+            self._save_models(episode, suffix="_best")
+        # ----------------------------------
+
+        # Switch back to train mode
+        for agent in self.agents:
+            agent.set_mode('train')
+
+    def _save_state(self):
+        """Saves the current training metadata AND stats."""
+        state_path = os.path.join(self.output_dir, "training_state.json")
+        
+        # Convert deques to lists so JSON can handle them
+        stats_to_save = {'episode_rewards': [list(d) for d in self.stats['episode_rewards']],
+                         'buffer_sizes_rl': [list(d) for d in self.stats['buffer_sizes_rl']],
+                         'buffer_sizes_sl': [list(d) for d in self.stats['buffer_sizes_sl']],
+                         'training_time': self.stats['training_time']}
+
+        state_data = {"hand_counter": self.hand_counter + 1, "best_avg_reward": self.best_avg_reward, "timestamp": time.time(), "stats": stats_to_save}
+        
+        with open(state_path, "w") as f:
+            json.dump(state_data, f)
+        print(f"Training state saved. (Hand {self.hand_counter})")
+
+    def _load_state(self):
+        """Loads the last training metadata and restores stats."""
+        state_path = os.path.join(self.output_dir, "training_state.json")
+        if os.path.exists(state_path):
+            with open(state_path, "r") as f:
+                data = json.load(f)
+                self.hand_counter = data.get("hand_counter", 0)
+                self.best_avg_reward = data.get("best_avg_reward", -float('inf'))
+                
+                if "stats" in data:
+                    saved_stats = data["stats"]
+                    self.stats['episode_rewards'] = [deque(l, maxlen=100) for l in saved_stats.get('episode_rewards', [[],[]])]
+                    self.stats['buffer_sizes_rl'] = [deque(l, maxlen=100) for l in saved_stats.get('buffer_sizes_rl', [[],[]])]
+                    self.stats['buffer_sizes_sl'] = [deque(l, maxlen=100) for l in saved_stats.get('buffer_sizes_sl', [[],[]])]
+                    self.prior_training_time = saved_stats.get('training_time', 0)
+                    self.stats['training_time'] = self.prior_training_time
+                    print(" - Restored console statistics (smooth graphs will continue).")
+                    
+            print(f"Resuming from Hand {self.hand_counter} (Best Reward: {self.best_avg_reward})")
+        else:
+            print("No previous training state found. Starting from Episode 0.")
+            self.hand_counter = 0
+            self.best_avg_reward = -float('inf')
 
     def _load_buffers(self):
         """Helper to load replay buffers for all agents."""
@@ -322,6 +352,5 @@ def main(config_path: str = "config.yaml"):
     trainer.train()
 
 if __name__ == "__main__":
-    # The script still runs normally from the command line, using the default "config.yaml"
     main()
 

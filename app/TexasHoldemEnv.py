@@ -8,6 +8,7 @@ from dataclasses import asdict
 class TexasHoldemEnv:
     """
     Clean poker game environment focused purely on game logic.
+    Currently intended for Heads-up only!
     AI-specific tracking moved to FeatureExtractor.
     Uses GameState from poker_core.
     """
@@ -436,8 +437,8 @@ class TexasHoldemEnv:
 
     def _distribute_pot_with_side_pots(self, hand_ranks=None):
         """
-        Handles complex pot distribution for showdowns with multiple all-in players.
-        This method creates and awards the main pot and all side pots.
+        Handles complex pot distribution for showdowns heads up.
+        This method creates and awards the main pot and side pot heads up.
         """
         if hand_ranks is None:
             hand_ranks = self._calculate_showdown_hand_ranks()

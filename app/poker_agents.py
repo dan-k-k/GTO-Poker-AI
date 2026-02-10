@@ -11,22 +11,15 @@ from app.poker_feature_schema import PokerFeatureSchema
 # Action indices map to (Action Type, Bet Size as % of Pot)
 # FOLD=0, CALL=1, RAISE=2. For RAISE, -1 signifies All-in.
 ACTION_MAP = [
-    (0, 0),      # 0: Fold
-    (1, 0),      # 1: Call/Check
-    (2, 0.20),   # 2: Raise 20% pot
-    (2, 0.30),   # 3: Raise 30% pot
-    (2, 0.40),   # 4: Raise 40% pot
-    (2, 0.50),   # 5: Raise 50% pot
-    (2, 0.70),   # 6: Raise 70% pot
-    (2, 0.90),   # 7: Raise 90% pot
-    (2, 1.10),   # 8: Raise 110% pot
-    (2, 1.30),   # 9: Raise 130% pot
-    (2, 1.50),   # 10: Raise 150% pot
-    (2, -1),     # 11: All-in
+    (0, 0),      # Fold
+    (1, 0),      # Call
+    (2, 0.50),   # Raise Small (50% Pot)
+    (2, 1.00),   # Raise Pot
+    (2, -1),     # All-in
 ]
 NUM_ACTIONS = len(ACTION_MAP)
 
-class GTOPokerNet(nn.Module):
+class BRNet(nn.Module):
     """
     Dueling Double DQN poker network architecture.
     Combines Dueling DQN (separate value/advantage streams) with Double DQN (action selection/evaluation).
@@ -80,25 +73,61 @@ class GTOPokerNet(nn.Module):
             'q_values': q_values  # Explicit Q-values for Double DQN
         }
     
-    def compute_double_dqn_target(self, next_states, rewards, dones, target_network, gamma=0.99):
-        """
-        Compute Double DQN targets to reduce overestimation bias.
-        Uses main network to select actions, target network to evaluate them.
-        """
+    def compute_double_dqn_target(self, next_states, rewards, dones, target_network, gamma, next_legal_masks):
         with torch.no_grad():
-            # Use main network to select best actions
+            # 1. Main Net selection (Select Best LEGAL Action)
             next_q_values_main = self.forward(next_states)['q_values']
-            next_actions = torch.argmax(next_q_values_main, dim=1)
             
-            # Use target network to evaluate the selected actions
+            # Apply Mask: Set illegal actions to negative infinity
+            masked_q_main = next_q_values_main.clone()
+            masked_q_main[~next_legal_masks] = -float('inf')
+            
+            next_actions = torch.argmax(masked_q_main, dim=1)
+            
+            # 2. Target Net evaluation
             next_q_values_target = target_network.forward(next_states)['q_values']
             next_q_values = next_q_values_target.gather(1, next_actions.unsqueeze(1)).squeeze(1)
             
-            # Compute targets: r + γ * Q_target(s', argmax_a Q_main(s', a))
-            targets = rewards + gamma * next_q_values * (~dones)
+            targets = rewards + gamma * next_q_values * (1.0 - dones.float())
             
         return targets
 
+class ASNet(nn.Module):
+    """
+    Standard Feed-Forward Network for Classification.
+    Used for the Average Strategy (Supervised Learning).
+    """
+    def __init__(self, input_size: int = None):
+        super().__init__()
+        
+        if input_size is None:
+            from app.poker_feature_schema import PokerFeatureSchema
+            input_size = PokerFeatureSchema.get_vector_size()
+            
+        self.net = nn.Sequential(
+            nn.Linear(input_size, 256),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, NUM_ACTIONS) # Direct output to action logits
+        )
+        
+    def forward(self, x):
+        logits = self.net(x)
+        probs = torch.softmax(logits, dim=-1)
+        
+        return {
+            'action_logits': logits,   # Used for CrossEntropyLoss
+            'action_probs': probs,     # Used for sampling actions
+            # We return q_values just to keep the interface compatible 
+            # with _get_action_from_network, even though they aren't real Q-values.
+            'q_values': logits         
+        }
+    
 class PokerAgent:
     """
     Base poker agent class.
@@ -146,12 +175,17 @@ class NeuralNetworkAgent(PokerAgent):
         """
         Returns: (action_type, amount, action_index, predictions, is_exploring_flag)
         """
+        network.eval()
         with torch.no_grad():
             features_tensor = torch.FloatTensor(features).unsqueeze(0)
             predictions = network(features_tensor)
             q_values = predictions['q_values'][0].numpy()
             action_probs = predictions['action_probs'][0].numpy()
+        network.train()
         
+        p = action_probs + 1e-9
+        predictions['entropy'] = float(-np.sum(p * np.log(p)))
+
         # 1. Get Mask of Legal Actions
         legal_action_mask = self._get_legal_action_mask(state)
         
@@ -165,12 +199,49 @@ class NeuralNetworkAgent(PokerAgent):
         # === PATH A: Best Response (Greedy + Epsilon) ===
         if use_greedy:
             if random.random() < epsilon:
-                # Pick a random LEGAL action
+                # --- FIX STARTS HERE ---
+                # Don't choose uniformly from all indices. 
+                # Categorize: 0=Fold, 1=Call, 2+=Raise
+                
                 legal_indices = np.where(legal_action_mask)[0]
-                action_index = np.random.choice(legal_indices)
-                is_random_exploration = True # Mark as random
+                
+                can_fold = 0 in legal_indices
+                can_call = 1 in legal_indices
+                raise_indices = [i for i in legal_indices if i >= 2]
+                
+                # Define probabilities for categories: [Fold, Call, Raise]
+                # Adjust these to encourage "normal" poker behavior during exploration
+                category_probs = []
+                available_categories = []
+                
+                if can_fold: 
+                    available_categories.append('fold')
+                    category_probs.append(0.2) # 20% chance to fold
+                if can_call: 
+                    available_categories.append('call')
+                    category_probs.append(0.4) # 40% chance to call
+                if raise_indices: 
+                    available_categories.append('raise')
+                    category_probs.append(0.4) # 40% chance to raise (split among sizes)
+                    
+                # Normalize probabilities
+                total_p = sum(category_probs)
+                category_probs = [p / total_p for p in category_probs]
+                
+                chosen_cat = np.random.choice(available_categories, p=category_probs)
+                
+                if chosen_cat == 'fold':
+                    action_index = 0
+                elif chosen_cat == 'call':
+                    action_index = 1
+                else:
+                    action_index = np.random.choice(raise_indices) # Uniform among raise sizes
+                
+                is_random_exploration = True 
+                # --- FIX ENDS HERE ---
+                
             else:
-                # Argmax on Q-values with masking
+                # (Standard Argmax Logic)
                 masked_q_values = q_values.copy()
                 masked_q_values[~legal_action_mask] = -float('inf')
                 action_index = np.argmax(masked_q_values)
@@ -205,38 +276,19 @@ class NeuralNetworkAgent(PokerAgent):
     def _get_legal_action_mask(self, state: GameState) -> np.ndarray:
         mask = np.zeros(NUM_ACTIONS, dtype=bool)
         legal_actions_from_state = state.get_legal_actions()
-        min_raise = state.get_min_raise_amount()
         
         for i, (action_type, sizing) in enumerate(ACTION_MAP):
             if action_type not in legal_actions_from_state:
                 continue
                 
             if action_type == 2: # Raise
-                if min_raise is None: continue # Should not happen if 2 is in legal_actions
-                
-                # Handling All-in (-1)
-                if sizing == -1: 
-                    mask[i] = True
-                    continue
-
-                # Calculate specific raise amount
-                amount_to_call = max(state.current_bets) - state.current_bets[self.seat_id]
-                pot_after_call = state.pot + amount_to_call
-                raise_amount = int(pot_after_call * sizing)
-                total_amount = amount_to_call + raise_amount
-                
-                # FIX: Strictly enforce min_raise for fractional bets
-                # If the calculated logic results in an illegal small raise, mask it OUT.
-                # Do NOT clamp it up. This forces the bot to choose a larger sizing index.
-                if total_amount >= min_raise and total_amount <= state.stacks[self.seat_id]:
-                    mask[i] = True
+                mask[i] = True
             else:
                 mask[i] = True
                 
         return mask
 
     def _calculate_bet_amount(self, sizing: float, state: GameState) -> Optional[int]:
-        # Keeps original logic but returns raw calculated amount for masking check
         stack = state.stacks[self.seat_id]
         if stack == 0: return None
         if sizing == -1: return stack
@@ -246,7 +298,11 @@ class NeuralNetworkAgent(PokerAgent):
         raise_amount = int(pot_after_call * sizing)
         total_amount = amount_to_call + raise_amount
         
-        # We allow the caller to handle the min/max clamping validation
+        min_raise = state.get_min_raise_amount()
+        if min_raise is not None:
+            if total_amount < min_raise:
+                total_amount = min_raise
+        
         return min(total_amount, stack)
 
 
@@ -261,7 +317,7 @@ class GTOAgent(NeuralNetworkAgent):
         self.model_path = model_path
         
         # Load the trained model
-        self.network = GTOPokerNet()
+        self.network = ASNet()
         try:
             self.network.load_state_dict(torch.load(model_path, map_location='cpu'))
             self.network.eval()
@@ -272,7 +328,7 @@ class GTOAgent(NeuralNetworkAgent):
         
     def compute_action(self, state: GameState) -> Tuple[int, Optional[int], None, str, None]:
         features = self.feature_extractor.extract_features(state).to_vector()
-        action, amount, _, _ = self._get_action_from_network(features, self.network, state)
+        action, amount, _, _, _ = self._get_action_from_network(features, self.network, state)
         return action, amount, None, "GTO", None
 
 

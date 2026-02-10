@@ -17,7 +17,6 @@ class BettingRoundFeatures:
 @dataclass
 class DynamicFeatures:
     """Features that change with EVERY action and must be recalculated each turn."""
-    hand_strength: float = 0.0       # The "intelligent" equity
     my_stack_bb: float = 0.0
     opp_stack_bb: float = 0.0
     pot_bb: float = 0.0
@@ -107,6 +106,7 @@ class PokerFeatureSchema:
 # -------------------------------------------------------------------------
 
     # 126 features 08/10/2025
+    # 125 features 08/02/2025 - removed intelligent equity (hand_strength) for speed.
     def to_vector(self) -> np.ndarray:
         """Flattens the entire nested schema into a 1D NumPy array directly."""
         vector_parts = [
@@ -118,7 +118,6 @@ class PokerFeatureSchema:
             self.hand.low_card_rank,
 
             # DynamicFeatures
-            self.dynamic.hand_strength,
             self.dynamic.my_stack_bb,
             self.dynamic.opp_stack_bb,
             self.dynamic.pot_bb,

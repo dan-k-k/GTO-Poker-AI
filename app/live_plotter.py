@@ -3,116 +3,146 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-from collections import deque
 
 class LivePlotter:
     def __init__(self, plot_file: str, csv_file: str = "training_metrics.csv", batch_size: int = 100):
         self.plot_file = plot_file
         self.csv_file = csv_file
         self.batch_size = batch_size 
-
         self.csv_buffer = []
-        self.plot_data = deque(maxlen=1000)
-
-        # Initialize CSV with headers if it doesn't exist
+                
+        # Check if CSV exists to ensure headers
         if not os.path.exists(self.csv_file):
-            # Create the file with headers
-            pd.DataFrame(columns=['vpip', 'pfr', 'reward', 'afq', 'entropy']).to_csv(self.csv_file, index=False)
+            pd.DataFrame(columns=['hand_id', 'vpip', 'pfr', 'reward', 'afq', 'entropy']).to_csv(self.csv_file, index=False)
 
-    def update(self, hand_data: dict):
+    def update(self, hand_data: dict, episode_num: int):
         stats = self._extract_stats(hand_data)
         if stats:
+            stats['hand_id'] = episode_num
             self.csv_buffer.append(stats)
-            self.plot_data.append(stats) 
 
         if len(self.csv_buffer) >= self.batch_size:
             self._flush_to_disk()
+            self.save_plot() 
+
+    def save_plot(self, window_size=1000): 
+        if not os.path.exists(self.csv_file): return
+
+        try:
+            # Read full history
+            df = pd.read_csv(self.csv_file)
+            if df.empty or len(df) < 10: return
+            
+            if 'hand_id' in df.columns:
+                df.set_index('hand_id', inplace=True)
+            
+            # Calculate rolling average
+            rolling = df.rolling(window=window_size, min_periods=10).mean()
+            
+            # Downsample for speed
+            if len(rolling) > 5000:
+                plot_data = rolling.iloc[::max(1, len(rolling)//2000)]
+            else:
+                plot_data = rolling
+
+            fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+            (ax1, ax2), (ax3, ax4) = axes
+            
+            # --- Plot 1: Preflop Strategy (VPIP / PFR) ---
+            ax1.plot(plot_data.index, plot_data['vpip'], label='VPIP', color='blue', linewidth=1.5)
+            ax1.plot(plot_data.index, plot_data['pfr'], label='PFR', color='orange', linewidth=1.5)
+            
+            # Reference Lines (Heads Up Norms)
+            # VPIP in HU is very high (SB plays ~80-95%)
+            ax1.axhline(0.90, color='blue', linestyle='--', alpha=0.3, label='Ref VPIP (~0.9)')
+            # PFR is aggressive but lower than VPIP
+            ax1.axhline(0.55, color='orange', linestyle='--', alpha=0.3, label='Ref PFR (~0.55)')
+            
+            ax1.set_title('P0 AS Preflop Strategy')
+            ax1.legend(loc='lower right', fontsize='small')
+            ax1.grid(True, alpha=0.2)
+            # ax1.set_ylim(-0.05, 1.05)
+
+            # --- Plot 2: Reward ---
+            ax2.plot(plot_data.index, plot_data['reward'], color='green', linewidth=1)
+            ax2.axhline(0, color='black', lw=1, linestyle='-')
+            
+            current_reward = rolling['reward'].iloc[-1] if not rolling.empty else 0
+            ax2.set_title(f"P0 AS Avg Reward (Last: {current_reward:.2f})")
+            ax2.grid(True, alpha=0.2)
+
+            # --- Plot 3: Aggression Frequency (AFq) ---
+            ax3.plot(plot_data.index, plot_data['afq'], color='red', linewidth=1.5)
+            
+            # Reference Line (Balanced Aggression is usually 0.45 - 0.55)
+            ax3.axhline(0.50, color='red', linestyle='--', alpha=0.3, label='Ref AFq (0.5)')
+            
+            ax3.set_title('P0 AS Aggression Freq')
+            ax3.legend(loc='lower right', fontsize='small')
+            ax3.grid(True, alpha=0.2)
+            # ax3.set_ylim(0, 1.0)
+
+            # --- Plot 4: Entropy ---
+            # Using fillna(0) to ensure plot draws even if data is missing
+            if 'entropy' in plot_data:
+                clean_entropy = plot_data['entropy'].fillna(0)
+                ax4.plot(plot_data.index, clean_entropy, color='purple', linewidth=1.5)
+            
+            ax4.set_title('P0 AS Entropy (Policy Uncertainty)')
+            ax4.grid(True, alpha=0.2)
+            # Standardize Y-axis to see small values, or fix to 0-1 if normalized
+            # Auto-scaling is usually better for entropy as it drops over time
+
+            plt.tight_layout()
+            plt.savefig(self.plot_file)
+            plt.close(fig)
+            
+        except Exception as e:
+            print(f"[LivePlotter] Error generating plot: {e}")
 
     def _flush_to_disk(self):
-        """Writes current buffer to CSV and clears memory."""
-        if not self.csv_buffer:
-            return
+        if not self.csv_buffer: return
         
         df = pd.DataFrame(self.csv_buffer)
+        expected_cols = ['hand_id', 'vpip', 'pfr', 'reward', 'afq', 'entropy']
+        # Ensure columns exist even if data is missing
+        for col in expected_cols:
+            if col not in df.columns:
+                df[col] = 0.0
+                
+        df = df[expected_cols]
         df.to_csv(self.csv_file, mode='a', header=False, index=False)
         self.csv_buffer = []
 
-    def save_plot(self, window_size=1000): # Reduced window size since we only have 1000 pts
-        """Generates plot from RAM buffer (Fast)."""
-        
-        if len(self.plot_data) < 10: 
-            return
-
-        # Create DataFrame directly from RAM 
-        df = pd.DataFrame(self.plot_data)
-        
-        # Rolling window on the live RAM data
-        rolling = df.rolling(window=window_size, min_periods=5).mean()
-        
-        fig, axes = plt.subplots(2, 2, figsize=(10, 8), sharex=True)
-        (ax1, ax2), (ax3, ax4) = axes
-        
-        # 1. Strategy (VPIP/PFR)
-        ax1.plot(df.index, rolling['vpip'], label='VPIP', color='blue', lw=1.5)
-        ax1.plot(df.index, rolling['pfr'], label='PFR', color='orange', lw=1.5)
-        ax1.set_title('Preflop Strategy')
-        ax1.set_ylabel('Freq')
-        ax1.legend()
-        ax1.grid(alpha=0.2)
-
-        # 2. Profitability
-        ax2.plot(df.index, rolling['reward'], color='green', lw=1)
-        ax2.axhline(0, color='black', lw=0.5)
-        ax2.set_title(f"Avg Reward (Last: {rolling['reward'].iloc[-1]:.2f})")
-        ax2.set_ylabel('BB/Hand')
-        ax2.grid(alpha=0.2)
-
-        # 3. Aggression
-        ax3.plot(df.index, rolling['afq'], color='red', lw=1)
-        ax3.set_title('Aggression Frequency')
-        ax3.set_ylabel('Freq')
-        ax3.set_xlabel('Hands')
-        ax3.grid(alpha=0.2)
-
-        # 4. Entropy
-        if 'entropy' in rolling and rolling['entropy'].notna().any():
-            ax4.plot(df.index, rolling['entropy'], color='purple', lw=1)
-        ax4.set_title('Policy Entropy')
-        ax4.set_xlabel('Hands')
-        ax4.grid(alpha=0.2)
-
-        plt.tight_layout()
-        plt.savefig(self.plot_file)
-        plt.close(fig)
-
-    def _extract_stats(self, row):
-        """Helper to parse raw hand_data safely."""
+    def _extract_stats(self, hand_data):
         try:
-            p0_actions = [a for a in row.get('actions', []) if a['player'] == 0]
+            # We are tracking Player 0 (The Agent)
+            p0_actions = [a for a in hand_data.get('actions', []) if a['player'] == 0]
             if not p0_actions: return None
+            if p0_actions[0].get('policy', 'Unknown') == 'BR': return None 
 
-            # Only track Average Strategy (AS)
-            # Safe get for policy name in case it's missing from some actions
-            policies = [a.get('policy') for a in p0_actions if 'policy' in a]
-            if not policies or 'AS' not in policies[0]: 
-                return None
-
-            # Calc Stats
+            # Preflop stats
             preflop = [a for a in p0_actions if a['street'] == 0]
-            vpip = 1 if any(a['action_type'] in [1, 2] for a in preflop) else 0
-            pfr = 1 if any(a['action_type'] == 2 for a in preflop) else 0
+            vpip = 1.0 if any(a['action_type'] in [1, 2] for a in preflop) else 0.0
+            pfr = 1.0 if any(a['action_type'] == 2 for a in preflop) else 0.0
             
-            aggressions = sum(1 for a in p0_actions if a['action_type'] == 2)
-            afq = aggressions / len(p0_actions) if p0_actions else 0
+            # Aggression Freq (Raise / (Call + Raise + Fold))
+            # Note: Checks are not "actions" in AFq usually, but simplistic version:
+            raise_count = sum(1 for a in p0_actions if a['action_type'] == 2)
+            afq = raise_count / len(p0_actions) if p0_actions else 0.0
 
-            entropies = [a['entropy'] for a in p0_actions if 'entropy' in a and a['entropy'] is not None]
-            avg_ent = np.mean(entropies) if entropies else None
+            # Entropy
+            # Only count actions where entropy was actually logged
+            valid_entropies = [a['entropy'] for a in p0_actions if 'entropy' in a and a['entropy'] is not None]
+            
+            # If no entropy data found, default to 0.0 so the plot isn't blank
+            avg_ent = np.mean(valid_entropies) if valid_entropies else 0.0
 
             return {
-                'vpip': vpip,
-                'pfr': pfr,
-                'reward': row['rewards'][0],
-                'afq': afq,
+                'vpip': vpip, 
+                'pfr': pfr, 
+                'reward': hand_data['rewards'][0], 
+                'afq': afq, 
                 'entropy': avg_ent
             }
         except Exception:

@@ -3,8 +3,8 @@
 training:
   num_episodes: 1000000     # *you can pause/resume training at anytime*; 
                             # good results after around 1,000,000 hands (maybe 50+ hrs)
-  save_interval: 1000
-  eval_interval: 500
+  save_interval: 20000
+  eval_interval: 20000
 
 agent:
   eta: 0.3              # Probability of using the average strategy (exploration)
@@ -15,6 +15,10 @@ agent:
   update_frequency: 4
   target_update_frequency: 1000  
 
+  epsilon_start: 0.4          # Starting exploration rate (40%) Chance of uniformly random action (BR only)
+  epsilon_end: 0.05           # Minimum exploration rate (.3%)
+  epsilon_decay_steps: 400000 # Number of learning steps to reach the minimum
+
 buffers:
   rl_buffer_capacity: 300000
   sl_buffer_capacity: 600000
@@ -22,9 +26,9 @@ buffers:
 # Simulation parameters for equity calculations
 simulations:
   random_equity_trials: 200           # For the equity against random hands
-  intelligent_equity_trials: 200      # For the intelligent equity against opponent range
+  starting_stack: 200
 
-# NEW SECTION
 logging:
+  verbose: true                       # <--- ADD THIS
   dump_features: false                # for the hand log to debug
 

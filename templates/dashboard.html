@@ -80,7 +80,10 @@
             
             <div class="builder-controls">
                 <div id="p0-group" class="control-group active-turn">
-                    <label style="color: #88ccff;">PLAYER 0 (Seat 0)</label>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <label style="color: #88ccff;">PLAYER 0 (Seat 0)</label>
+                        <div id="p0-cards" style="display:flex; gap:5px;"></div>
+                    </div>
                     <div style="font-size:0.8em; margin-bottom:5px;">Stack: <span id="p0-stack">199</span></div>
                     
                     <div class="btn-group">
@@ -94,7 +97,10 @@
                 </div>
 
                 <div id="p1-group" class="control-group">
-                    <label style="color: #ff8888;">PLAYER 1 (Seat 1)</label>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <label style="color: #ff8888;">PLAYER 1 (Seat 1)</label>
+                        <div id="p1-cards" style="display:flex; gap:5px;"></div>
+                    </div>
                     <div style="font-size:0.8em; margin-bottom:5px;">Stack: <span id="p1-stack">198</span></div>
 
                     <div class="btn-group">
@@ -169,60 +175,71 @@
 
     function getToMove() {
         if (builderState.past_actions.length === 0) return 0;
-        const lastActor = builderState.past_actions[builderState.past_actions.length - 1].seat_id;
-        return 1 - lastActor;
+        const lastLog = builderState.past_actions[builderState.past_actions.length - 1];
+
+        // If we just entered a NEW street, reset turn order based on poker rules
+        if (builderState.stage > lastLog.stage) {
+            // Preflop (0): SB (0) acts first
+            // Postflop (>0): BB (1) acts first
+            return builderState.stage === 0 ? 0 : 1;
+        }
+
+        // Otherwise, standard toggle within the street
+        return 1 - lastLog.seat_id;
     }
 
     function addHistory(seat, actionType, inputTotal) {
-        // 1. Calculate how much more chips the player puts in (Delta)
         let amountAdded = 0;
         
-        if (actionType === 0) {
-            // Fold
-            amountAdded = 0;
-        } 
-        else if (actionType === 1) {
-            // Check/Call: Match the highest current bet
+        if (actionType === 1) { // Check/Call
             const highestBet = Math.max(...builderState.current_bets);
-            const myCurrent = builderState.current_bets[seat];
-            amountAdded = highestBet - myCurrent;
-        } 
-        else if (actionType === 2) {
-            // Bet/Raise: User inputs "Raise To". Delta = Total - MyCurrent
+            amountAdded = highestBet - builderState.current_bets[seat];
+        } else if (actionType === 2) { // Raise
             const targetTotal = parseInt(inputTotal);
             if (!targetTotal || targetTotal < builderState.current_bets[seat]) {
-                alert("Invalid Raise Amount: Must be greater than your current bet.");
-                return;
+                alert("Invalid Raise Amount"); return;
             }
             amountAdded = targetTotal - builderState.current_bets[seat];
         }
 
-        // 2. Validate user has enough chips
         if (amountAdded > builderState.stacks[seat]) {
-            alert("Not enough chips! Going All-in instead.");
+            alert("Not enough chips! Adjusted to All-in.");
             amountAdded = builderState.stacks[seat];
         }
 
-        // 3. Update State
         builderState.stacks[seat] -= amountAdded;
         builderState.current_bets[seat] += amountAdded;
         builderState.pot += amountAdded;
 
-        // 4. Log Action
         builderState.past_actions.push({
-            seat_id: seat,
-            stage: builderState.stage,
-            action_type: actionType,
-            amount_added: amountAdded
+            seat_id: seat, stage: builderState.stage, action_type: actionType, amount_added: amountAdded
         });
 
         renderState();
+        
+        if (actionType === 0) alert("Hand Over (Fold)");
+        else checkAutoNextStreet();
+    }
+
+    function checkAutoNextStreet() {
+        if (builderState.stage >= 3) return;
+        if (builderState.current_bets[0] !== builderState.current_bets[1]) return;
+
+        const lastLog = builderState.past_actions[builderState.past_actions.length - 1];
+        const lastActor = lastLog.seat_id;
+        let shouldAdvance = false;
+
+        // Preflop ends when BB (1) acts. Postflop ends when Button (0) acts.
+        if (builderState.stage === 0) { if (lastActor === 1) shouldAdvance = true; } 
+        else { if (lastActor === 0) shouldAdvance = true; }
+
+        if (shouldAdvance) setTimeout(() => nextStreet(), 500);
     }
 
     function nextStreet() {
         if (builderState.stage >= 3) return;
         builderState.stage += 1;
-        builderState.current_bets = [0, 0]; // Bets reset per street
+        builderState.current_bets = [0, 0];
         
         if (builderState.stage === 1) builderState.community_cards = builderState.deck.slice(0,3);
         if (builderState.stage === 2) builderState.community_cards = builderState.deck.slice(0,4);
@@ -233,40 +250,56 @@
 
     function resetBuilder() {
         builderState = {
-            pot: 3,
-            initial_stacks: [200, 200],
-            stacks: [199, 198],
-            current_bets: [1, 2],
-            stage: 0,
-            past_actions: [],
-            dealer_id: 0,
-            hole_cards: [["Ah", "Kd"], ["Qs", "Js"]],
-            deck: ["2h", "7s", "Td", "Ks", "Ac"], 
-            community_cards: []
+            pot: 3, initial_stacks: [200, 200], stacks: [199, 198], current_bets: [1, 2],
+            stage: 0, past_actions: [], dealer_id: 0, hole_cards: [["Ah", "Kd"], ["Qs", "Js"]],
+            deck: ["2h", "7s", "Td", "Ks", "Ac"], community_cards: []
         };
         renderState();
     }
 
     // --- Rendering ---
 
+    function renderHoleCards() {
+        const p0Div = document.getElementById('p0-cards');
+        const p1Div = document.getElementById('p1-cards');
+        
+        // Helper to create card HTML
+        const createCardEl = (cardStr) => {
+            const isRed = (cardStr[1] === 'd' || cardStr[1] === 'h');
+            const icon = {'d':'♦','h':'♥','s':'♠','c':'♣'}[cardStr[1]];
+            const el = document.createElement('div');
+            // Small styling for hole cards
+            el.style.cssText = `
+                background: white; color: ${isRed ? '#d00' : 'black'}; 
+                width: 25px; height: 35px; border-radius: 3px; 
+                display: flex; align-items: center; justify-content: center; 
+                font-weight: bold; font-size: 0.9em; border: 1px solid #999;
+            `;
+            el.innerText = cardStr[0] + icon;
+            return el;
+        };
+
+        // Clear previous
+        p0Div.innerHTML = '';
+        p1Div.innerHTML = '';
+
+        // Render P0 Cards
+        builderState.hole_cards[0].forEach(c => p0Div.appendChild(createCardEl(c)));
+        
+        // Render P1 Cards
+        builderState.hole_cards[1].forEach(c => p1Div.appendChild(createCardEl(c)));
+    }
+
     function renderState() {
-        // Update JSON View
         const json = {
-            pot: builderState.pot,
-            current_bets: builderState.current_bets,
-            stacks: builderState.stacks,
-            initial_stacks: builderState.initial_stacks,
-            hole_cards: builderState.hole_cards,
-            community_cards: builderState.community_cards,
-            dealer_id: builderState.dealer_id,
-            to_move: getToMove(),
-            stage: builderState.stage,
-            past_actions: builderState.past_actions,
+            pot: builderState.pot, current_bets: builderState.current_bets, stacks: builderState.stacks,
+            initial_stacks: builderState.initial_stacks, hole_cards: builderState.hole_cards,
+            community_cards: builderState.community_cards, dealer_id: builderState.dealer_id,
+            to_move: getToMove(), stage: builderState.stage, past_actions: builderState.past_actions,
             legal_actions: [0, 1, 2]
         };
         document.getElementById('jsonInput').value = JSON.stringify(json, null, 2);
 
-        // Update UI
         const toMove = getToMove();
         document.getElementById('p0-group').className = `control-group ${toMove===0 ? 'active-turn' : ''}`;
         document.getElementById('p1-group').className = `control-group ${toMove===1 ? 'active-turn' : ''}`;
@@ -275,20 +308,36 @@
         document.getElementById('visual-pot').innerText = builderState.pot;
 
         renderBoard();
+        renderHoleCards();
         renderLog();
     }
 
     function renderBoard() {
         const boardDiv = document.getElementById('visual-board');
-        boardDiv.innerHTML = builderState.community_cards.length ? '' : '<span style="color:#aaa; font-size:0.8em; align-self:center;">Preflop</span>';
+        const streetNames = ["Preflop", "Flop", "Turn", "River"];
+        
+        if (builderState.community_cards.length === 0) {
+            boardDiv.innerHTML = `<span style="color:#aaa; font-size:0.8em; align-self:center;">${streetNames[builderState.stage]}</span>`;
+            return;
+        }
+        boardDiv.innerHTML = '';
         builderState.community_cards.forEach(c => {
             const isRed = (c[1] === 'd' || c[1] === 'h');
             const icon = {'d':'♦','h':'♥','s':'♠','c':'♣'}[c[1]];
-            const el = document.createElement('div');
-            el.className = `card-box ${isRed ? 'red' : ''}`;
-            el.innerText = c[0] + icon;
+            const el = document.createElement('div'); el.className = `card-box ${isRed ? 'red' : ''}`; el.innerText = c[0] + icon;
             boardDiv.appendChild(el);
         });
+    }
+
+    // Helper to render the street header string
+    function renderStreetHeader(stage) {
+        const names = ["PREFLOP", "FLOP", "TURN", "RIVER"];
+        let cardsStr = "";
+        if(stage === 1) cardsStr = builderState.deck.slice(0,3).join(' ');
+        if(stage === 2) cardsStr = builderState.deck[3];
+        if(stage === 3) cardsStr = builderState.deck[4];
+        
+        addLogLine(`--- ${names[stage]} ${cardsStr ? '('+cardsStr+')' : ''} ---`, 'log-street');
     }
 
     function renderLog() {
@@ -296,61 +345,43 @@
         logDiv.innerHTML = '';
         addLogLine('Game Start: Blinds posted (1/2)', 'gray');
 
-        // Replay Simulation
-        // Initialize with blinds for safety, but the loop handles the reset
         let simCurrentBets = [1, 2]; 
         let currentStageProcessed = -1;
 
+        // 1. Replay past actions
         builderState.past_actions.forEach(act => {
-            // New Street Detection
             if (act.stage > currentStageProcessed) {
-                const names = ["PREFLOP", "FLOP", "TURN", "RIVER"];
-                const cards = [
-                    "", 
-                    builderState.deck.slice(0,3).join(' '), 
-                    builderState.deck[3], 
-                    builderState.deck[4]
-                ][act.stage];
-                
-                addLogLine(`--- ${names[act.stage]} ${cards ? '('+cards+')' : ''} ---`, 'log-street');
+                renderStreetHeader(act.stage);
                 currentStageProcessed = act.stage;
                 
-                // If it's Preflop (Stage 0), start with Blinds [1, 2]. 
-                // Otherwise (Flop/Turn/River), reset to [0, 0].
-                if (act.stage === 0) {
-                    simCurrentBets = [1, 2];
-                } else {
-                    simCurrentBets = [0, 0]; 
-                }
+                if (act.stage === 0) simCurrentBets = [1, 2];
+                else simCurrentBets = [0, 0]; 
             }
 
-            // Calculate "Raise To" total
             simCurrentBets[act.seat_id] += act.amount_added;
             const totalBet = simCurrentBets[act.seat_id];
             
-            // Format Text
             const pName = `P${act.seat_id}`;
             const pClass = act.seat_id === 0 ? 'log-p0' : 'log-p1';
-            let actionText = "";
+            let actionText = act.action_type === 0 ? "Folds" : act.action_type === 1 ? (act.amount_added === 0 ? "Checks" : `Calls ${act.amount_added}`) : `Raises TO ${totalBet}`;
 
-            if (act.action_type === 0) actionText = "Folds";
-            else if (act.action_type === 1) actionText = act.amount_added === 0 ? "Checks" : `Calls ${act.amount_added}`;
-            else if (act.action_type === 2) actionText = `Raises TO ${totalBet}`;
-
-            const entry = document.createElement('div');
-            entry.className = 'log-entry';
+            const entry = document.createElement('div'); entry.className = 'log-entry';
             entry.innerHTML = `<span class="${pClass}">${pName}</span> ${actionText}`;
             logDiv.appendChild(entry);
         });
+
+        // 2. *** NEW FIX *** // If the actual game stage is ahead of the last processed action stage, 
+        // it means we just entered a new street but haven't acted yet. Print header.
+        if (builderState.stage > currentStageProcessed) {
+             renderStreetHeader(builderState.stage);
+        }
 
         logDiv.scrollTop = logDiv.scrollHeight;
     }
 
     function addLogLine(text, cssClass) {
-        const div = document.createElement('div');
-        div.className = cssClass || 'log-entry';
-        div.innerText = text;
-        document.getElementById('game-log').appendChild(div);
+        const div = document.createElement('div'); div.className = cssClass || 'log-entry';
+        div.innerText = text; document.getElementById('game-log').appendChild(div);
     }
 
     async function getRecommendation() {
@@ -358,33 +389,25 @@
         const resultBox = document.getElementById('result-box');
         const loading = document.getElementById('loading');
         
-        resultBox.style.display = 'none';
-        loading.style.display = 'block';
+        resultBox.style.display = 'none'; loading.style.display = 'block';
 
         try {
             const response = await fetch('http://localhost:8000/get_optimal_action', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: inputData
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: inputData
             });
             const data = await response.json();
-            
-            loading.style.display = 'none';
-            resultBox.style.display = 'block';
+            loading.style.display = 'none'; resultBox.style.display = 'block';
             
             const req = JSON.parse(inputData);
             document.getElementById('ai-player-target').innerText = "Player " + req.to_move;
             
             if (data.action_type) {
-                document.getElementById('action-text').innerText = data.action_type.toUpperCase();
+                const color = data.action_type === 'fold' ? '#d9534f' : data.action_type === 'raise' ? '#ffd700' : '#5cb85c';
+                const actionDisplay = document.getElementById('action-text');
+                actionDisplay.innerText = data.action_type.toUpperCase(); actionDisplay.style.color = color;
                 document.getElementById('amount-text').innerText = data.amount !== null ? data.amount : "N/A";
-            } else {
-                document.getElementById('action-text').innerText = "ERROR";
-            }
-        } catch (error) {
-            loading.style.display = 'none';
-            alert("API Error. Ensure server is running.");
-        }
+            } else { document.getElementById('action-text').innerText = "ERROR"; }
+        } catch (error) { loading.style.display = 'none'; alert("API Error. Ensure server is running."); }
     }
 
     renderState();
