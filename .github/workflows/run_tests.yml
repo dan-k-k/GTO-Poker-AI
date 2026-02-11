@@ -5,9 +5,7 @@ name: Poker AI CI
 # Trigger the workflow on push or pull request to the main branch
 on:
   push:
-    branches: [ "main", "master" ]
   pull_request:
-    branches: [ "main", "master" ]
 
 jobs:
   build-and-test:
