@@ -44,7 +44,6 @@ class NFSPTrainer:
 
         # Training statistics (Modified to be bounded)
         self.stats = {
-            # Keep only last 100 rewards for printing progress
             'episode_rewards': [deque(maxlen=100), deque(maxlen=100)], 
             'buffer_sizes_rl': [deque(maxlen=100), deque(maxlen=100)],
             'buffer_sizes_sl': [deque(maxlen=100), deque(maxlen=100)],
@@ -157,7 +156,13 @@ class NFSPTrainer:
                 
                 rewards, hand_data = self.play_episode(self.env, self.agents, logger=self.logger, training=True, episode_num=episode)
                 self._update_stats(rewards)
-                if hand_data and (episode % 100 == 0): self.plotter.update(hand_data, episode)
+                if hand_data: self.plotter.update(hand_data, episode)
+
+                if episode > 0 and episode % 500 == 0:
+                    elapsed = time.time() - session_start_time
+                    vpip = np.mean([1.0 if r > 0 else 0.0 for r in list(self.stats['episode_rewards'][0])[-100:]]) # Proxy for activity
+                    progress = (episode / self.num_episodes); curr_eps = self.agents[0].get_current_epsilon()
+                    print(f"[{progress:.1%}] Ep {episode}/{self.num_episodes} | Eps: {curr_eps:.3f} | {elapsed:.1f}s | RL_Buf: {len(self.agents[0].rl_buffer)}, SL_Buf: {len(self.agents[0].sl_buffer)} | Recent Rew: {np.mean(self.stats['episode_rewards'][0]):.2f}")
 
                 # 2. Evaluation Step
                 if episode > 0 and episode % self.eval_interval == 0:
@@ -221,10 +226,11 @@ class NFSPTrainer:
         agent_to_eval.set_mode('train')
 
     def _save_state(self):
-        """Saves the current training metadata AND stats."""
+        """Saves the current training metadata AND stats ATOMICALLY."""
         state_path = os.path.join(self.output_dir, "training_state.json")
+        temp_path = state_path + ".tmp"
         
-        # Convert deques to lists so JSON can handle them
+        # Convert deques to lists
         stats_to_save = {'episode_rewards': [list(d) for d in self.stats['episode_rewards']],
                          'buffer_sizes_rl': [list(d) for d in self.stats['buffer_sizes_rl']],
                          'buffer_sizes_sl': [list(d) for d in self.stats['buffer_sizes_sl']],
@@ -232,9 +238,18 @@ class NFSPTrainer:
 
         state_data = {"hand_counter": self.hand_counter + 1, "best_avg_reward": self.best_avg_reward, "timestamp": time.time(), "stats": stats_to_save}
         
-        with open(state_path, "w") as f:
-            json.dump(state_data, f)
-        print(f"Training state saved. (Hand {self.hand_counter})")
+        try:
+            with open(temp_path, "w") as f:
+                json.dump(state_data, f, indent=2)
+            
+            # Atomic swap
+            if os.path.exists(state_path):
+                os.remove(state_path)
+            os.rename(temp_path, state_path)
+            
+            print(f"Training state saved. (Hand {self.hand_counter})")
+        except Exception as e:
+            print(f"CRITICAL ERROR SAVING STATE: {e}")
 
     def _load_state(self):
         """Loads the last training metadata and restores stats."""

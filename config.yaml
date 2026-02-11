@@ -1,10 +1,9 @@
 # config.yaml
-
 training:
-  num_episodes: 1000000     # *you can pause/resume training at anytime*; 
+  num_episodes: 10000000     # *you can pause/resume training at anytime*; 
                             # good results after around 1,000,000 hands (maybe 50+ hrs)
   save_interval: 20000
-  eval_interval: 20000
+  eval_interval: 5000
 
 agent:
   eta: 0.3              # Probability of using the average strategy (exploration)

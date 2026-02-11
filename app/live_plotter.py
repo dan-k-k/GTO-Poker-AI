@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 class LivePlotter:
-    def __init__(self, plot_file: str, csv_file: str = "training_metrics.csv", batch_size: int = 100):
+    def __init__(self, plot_file: str, csv_file: str = "training_metrics.csv", batch_size: int = 5000):
         self.plot_file = plot_file
         self.csv_file = csv_file
         self.batch_size = batch_size 

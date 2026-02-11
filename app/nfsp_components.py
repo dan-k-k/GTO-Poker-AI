@@ -35,6 +35,12 @@ class ReplayBuffer:
         
     def push(self, state, action, reward, next_state, done, next_legal_mask):
         """Stores experience in the pre-allocated arrays."""
+        if state.shape[0] != self.input_size: raise ValueError(f"Buffer Mismatch: Expected state dim {self.input_size}, got {state.shape[0]}")
+        if np.isnan(state).any() or np.isinf(state).any(): raise ValueError("CRITICAL: NaNs or Infs detected in state vector being pushed to buffer.")
+        if not np.isfinite(state).all(): raise ValueError("CRITICAL: NaNs or Infs detected in 'state' vector.")
+        if not np.isfinite(next_state).all(): raise ValueError("CRITICAL: NaNs or Infs detected in 'next_state' vector.")
+        if not np.isfinite(reward): raise ValueError(f"CRITICAL: Reward is not finite: {reward}")
+        if action < 0 or action >= self.action_dim: raise ValueError(f"CRITICAL: Invalid action index {action}")
         self.states[self.ptr] = state
         self.actions[self.ptr] = action
         self.rewards[self.ptr] = reward
@@ -103,22 +109,20 @@ class SLBuffer:
         self.action_buffer = np.zeros(self.capacity, dtype=np.int64)
 
     def push(self, state: np.ndarray, action_index: int):
-        """Store state-action_index pair using Reservoir Sampling."""
-        
-        # Lazy initialization if this is the first push ever
+        """Store state-action_index pair using Random Replacement."""
+        if not np.isfinite(state).all(): raise ValueError("CRITICAL: SL Buffer received NaN/Inf state.")
+        # Lazy initialization
         if self.state_buffer is None:
             self._init_buffers(state.shape[0])
 
         if self.size < self.capacity:
-            self.state_buffer[self.size] = state
-            self.action_buffer[self.size] = action_index
+            idx = self.size
             self.size += 1
         else:
-            r = random.randint(0, self.total_count)
-            if r < self.capacity:
-                self.state_buffer[r] = state
-                self.action_buffer[r] = action_index
+            idx = random.randint(0, self.capacity - 1)
         
+        self.state_buffer[idx] = state
+        self.action_buffer[idx] = action_index
         self.total_count += 1
         
     def sample(self, batch_size: int) -> Tuple[torch.Tensor, torch.LongTensor]:
@@ -305,8 +309,9 @@ class NFSPAgent(NeuralNetworkAgent):
         states, actions, rewards, next_states, dones, next_legal_masks = self.rl_buffer.sample(self.batch_size)
         
         # 1. Current Q(s, a)
-        current_q_values = self.br_network(states)['q_values']
-        current_q_values = torch.gather(current_q_values, 1, actions.unsqueeze(1)).squeeze(1)
+        current_q_values_ = self.br_network(states)['q_values']
+        if torch.isnan(current_q_values_).any(): raise RuntimeError("CRITICAL: BR Network output contains NaNs! Model is corrupted.")
+        current_q_values = torch.gather(current_q_values_, 1, actions.unsqueeze(1)).squeeze(1)
         
         # 2. Target = r + gamma * max Q(s', a')
         # Double DQN: Use Main Net to choose action, Target Net to evaluate value
@@ -314,10 +319,20 @@ class NFSPAgent(NeuralNetworkAgent):
         
         # 3. Loss
         loss = nn.MSELoss()(current_q_values, target_q_values)
-        
+        if torch.isnan(loss) or torch.isinf(loss):
+            crash_dir = os.path.join("training_output", "models")
+            os.makedirs(crash_dir, exist_ok=True) # Ensure folder exists
+            crash_path = os.path.join(crash_dir, "crash_states.pt")
+            torch.save(states, crash_path)
+            raise RuntimeError(f"CRITICAL: BR Training Loss is {loss.item()}! Stopping to prevent pollution.")
         self.br_optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.br_network.parameters(), 1.0)
+        for name, param in self.br_network.named_parameters():
+            if param.grad is not None:
+                if torch.isnan(param.grad).any():
+                    raise RuntimeError(f"CRITICAL: NaN gradient detected in {name} BEFORE clipping.")
+        total_norm = torch.nn.utils.clip_grad_norm_(self.br_network.parameters(), 1.0)
+        if torch.isnan(total_norm) or torch.isinf(total_norm): raise RuntimeError("CRITICAL: Gradients exploded (NaN/Inf) even after clipping.")
         self.br_optimizer.step()
         
         # 4. Sync Target Network
@@ -372,8 +387,22 @@ class NFSPAgent(NeuralNetworkAgent):
         return schema.preflop
     
     def save_models(self, br_path: str, as_path: str):
-        torch.save({'model_state_dict': self.br_network.state_dict(), 'target_model_state_dict': self.br_target_network.state_dict(), 'optimizer_state_dict': self.br_optimizer.state_dict(),'step_count': self.step_count}, br_path)
-        torch.save({'model_state_dict': self.as_network.state_dict(), 'optimizer_state_dict': self.as_optimizer.state_dict()}, as_path)
+        def save_atomic(state_dict, filepath):
+            temp_path = filepath + ".tmp"
+            try:
+                torch.save(state_dict, temp_path)
+                if os.path.exists(filepath):
+                    os.remove(filepath) # Windows compatibility
+                os.rename(temp_path, filepath)
+            except Exception as e:
+                print(f"Error saving model to {filepath}: {e}")
+                if os.path.exists(temp_path): os.remove(temp_path)
+
+        br_state = {'model_state_dict': self.br_network.state_dict(),'target_model_state_dict': self.br_target_network.state_dict(),'optimizer_state_dict': self.br_optimizer.state_dict(),'step_count': self.step_count}
+        save_atomic(br_state, br_path)
+
+        as_state = {'model_state_dict': self.as_network.state_dict(),'optimizer_state_dict': self.as_optimizer.state_dict()}
+        save_atomic(as_state, as_path)
             
     def load_models(self, br_path: str, as_path: str):
         if not os.path.exists(br_path):
@@ -416,15 +445,22 @@ class NFSPAgent(NeuralNetworkAgent):
         save_safe(self.sl_buffer, sl_path)
 
     def load_buffers(self, rl_path: str, sl_path: str):
-        try:
-            if os.path.exists(rl_path) and os.path.exists(sl_path):
-                with open(rl_path, 'rb') as f:
-                    self.rl_buffer = pickle.load(f)
-                with open(sl_path, 'rb') as f:
-                    self.sl_buffer = pickle.load(f)
-                print(f"Successfully loaded replay buffers.")
-            else:
-                print("No replay buffer files found, starting with empty buffers.")
-        except Exception as e:
-            print(f"Error loading buffers: {e}. Starting with empty buffers.")
+        if not os.path.exists(rl_path) or not os.path.exists(sl_path):
+            raise FileNotFoundError(f"RESUME CRITICAL: Buffer files missing at {rl_path}")
+
+        with open(rl_path, 'rb') as f:
+            new_rl = pickle.load(f)
+        with open(sl_path, 'rb') as f:
+            new_sl = pickle.load(f)
+
+        current_dim = PokerFeatureSchema.get_vector_size()
+        if new_rl.input_size != current_dim:
+            raise ValueError(f"DIMENSION MISMATCH: RL Buffer has {new_rl.input_size} features, "
+                             f"but model expects {current_dim}. Did you change the FeatureExtractor?")
+        if np.isnan(new_rl.states[:new_rl.size]).any():
+            raise ValueError("CRITICAL: Loaded RL Buffer contains NaN values. The save file is corrupted.")
+
+        self.rl_buffer = new_rl
+        self.sl_buffer = new_sl
+        print(f"Successfully loaded buffers (Size: {len(self.rl_buffer)}RL, {len(self.sl_buffer)}SL)")
 
