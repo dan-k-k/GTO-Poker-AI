@@ -1,7 +1,7 @@
 # app/_hand_history_logger.py
-# app/_hand_history_logger.py
 import logging
 import dataclasses
+from logging.handlers import RotatingFileHandler 
 from app.poker_core import card_to_string, HandEvaluator
 from app.poker_agents import ACTION_MAP 
 
@@ -13,7 +13,7 @@ class HandHistoryLogger:
         self.logger.propagate = False
         if self.logger.hasHandlers(): self.logger.handlers.clear()
 
-        handler = logging.FileHandler(log_file, mode='w')
+        handler = RotatingFileHandler(log_file, maxBytes=10*1024*1024, backupCount=1)
         handler.setFormatter(logging.Formatter('%(message)s'))
         self.logger.addHandler(handler)
         
@@ -70,7 +70,7 @@ class HandHistoryLogger:
                 e_rew_str = f"{predictions['state_values'][0].item():+.4f}"
 
         stack_bb = state_before.stacks[player_id] / state_before.big_blind 
-        self.logger.info(f"    [{p_name}({policy_name}): {' '.join(hole)} ({hand_name}) | {feat_str}P:[{probs_str}] | Rew:{e_rew_str} | Stack: {stack_bb:.1f}BB]")
+        self.logger.info(f"    [{p_name}({policy_name}): {' '.join(hole)} ({hand_name}) | {feat_str}P:[{probs_str}] | xRew:{e_rew_str} | Stack: {stack_bb:.1f}BB]")
 
         # Action String
         cur_bets = state_before.current_bets
