@@ -13,7 +13,7 @@ from app.poker_feature_schema import PokerFeatureSchema
 # FOLD=0, CALL=1, RAISE=2. For RAISE, -1 signifies All-in.
 ACTION_MAP = [
     (0, 0),      # Fold
-    (1, 0),      # Call
+    (1, 0),      # Check/call
     (2, 0.50),   # Raise Small (50% Pot)
     (2, 1.00),   # Raise Pot
     (2, -1),     # All-in

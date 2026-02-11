@@ -60,7 +60,7 @@ class NFSPTrainer:
         log_path = os.path.join(self.output_dir, "hand_history.log")
         self.logger = HandHistoryLogger(log_file=log_path, dump_features=config['logging']['dump_features'], verbose=config['logging']['verbose'])
         self.hand_counter = 0
-        self.plotter = LivePlotter(plot_file=plot_path, csv_file=csv_path)
+        self.plotter = LivePlotter(plot_file=plot_path, csv_file=csv_path, batch_size=100)
         
         # === Attempt to load latest models to resume training ===
         self._load_state()
@@ -135,14 +135,14 @@ class NFSPTrainer:
     def train(self):
         """Main training loop with Resume and Interrupt handling."""
         print("Starting NFSP Training...")
-        print(f"Total Target Episodes: {self.num_episodes}")
+        print(f"Total Target Episodes: {self.num_episodes:,}")
         
         start_episode = self.hand_counter
         if start_episode >= self.num_episodes:
-            print(f"Training already completed ({start_episode}/{self.num_episodes}).")
+            print(f"Training already completed ({start_episode:,}/{self.num_episodes:,}).")
             return
 
-        print(f"Resuming from Episode {start_episode}...")
+        print(f"Resuming from Episode {start_episode:,}...")
         session_start_time = time.time()
         completed_normally = False
 
@@ -162,7 +162,7 @@ class NFSPTrainer:
                     elapsed = time.time() - session_start_time
                     vpip = np.mean([1.0 if r > 0 else 0.0 for r in list(self.stats['episode_rewards'][0])[-100:]]) # Proxy for activity
                     progress = (episode / self.num_episodes); curr_eps = self.agents[0].get_current_epsilon()
-                    print(f"[{progress:.1%}] Ep {episode}/{self.num_episodes} | Eps: {curr_eps:.3f} | {elapsed:.1f}s | RL_Buf: {len(self.agents[0].rl_buffer)}, SL_Buf: {len(self.agents[0].sl_buffer)} | Recent Rew: {np.mean(self.stats['episode_rewards'][0]):.2f}")
+                    print(f"[{progress:.1%}] Ep {episode:,}/{self.num_episodes:,} | Eps: {curr_eps:.3f} | {elapsed:.1f}s | RL_Buf: {len(self.agents[0].rl_buffer)}, SL_Buf: {len(self.agents[0].sl_buffer)} | Recent Rew: {np.mean(self.stats['episode_rewards'][0]):.2f}")
 
                 # 2. Evaluation Step
                 if episode > 0 and episode % self.eval_interval == 0:
