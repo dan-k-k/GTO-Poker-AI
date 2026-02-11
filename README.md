@@ -46,6 +46,6 @@ snakeviz testtrain.pstats
 
 ### Play against a trained Agent
 ```bash
-python main.py
+python unified_api.py
 # Go to: http://127.0.0.1:5001
 ```
