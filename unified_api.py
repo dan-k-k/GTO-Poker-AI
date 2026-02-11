@@ -1,4 +1,5 @@
 # unified_api.py
+# find . -maxdepth 2 -not -path '*/.*' 
 import os
 import uuid
 import base64
@@ -9,6 +10,7 @@ from io import BytesIO
 from contextlib import asynccontextmanager
 from typing import Dict, Optional, List
 from datetime import datetime
+from starlette.status import HTTP_303_SEE_OTHER # Add this import
 
 from fastapi import FastAPI, Request, Response, HTTPException, Depends, Cookie
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -29,7 +31,6 @@ from app._visuals import create_table_image
 # --- Schema Imports ---
 from api_schemas import GameStateInput, ActionResponse, ActionLog
 
-# ==========================================
 # Global State & Configuration
 # ==========================================
 
@@ -64,6 +65,7 @@ def load_global_model():
     if os.path.exists(as_path) and os.path.exists(br_path):
         agent.load_models(br_path=br_path, as_path=as_path)
         agent.opponent_as_network = agent.as_network 
+        agent.set_mode('eval')
         print(" Global Model Loaded.")
     else:
         print(" WARNING: Model files not found. Solver will be random.")
@@ -91,8 +93,6 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-
-# ==========================================
 # Helper Functions
 # ==========================================
 
@@ -251,7 +251,8 @@ async def get_game_state(request: Request):
             agent.br_network = GLOBAL_MODEL_AGENT.br_network
             agent.as_network = GLOBAL_MODEL_AGENT.as_network
             agent.opponent_as_network = GLOBAL_MODEL_AGENT.as_network
-        
+            agent.set_mode('eval')
+            
         ACTIVE_SESSIONS[session_id] = {
             'env': env,
             'agent': agent,
@@ -337,12 +338,13 @@ async def new_game(request: Request):
         env.reset()
         bot_agent.new_hand()
     else:
-        # Full Reset for tournament winner
         del ACTIVE_SESSIONS[session_id]
-        return RedirectResponse(url="/game_state")
+        # CHANGE: Use status_code=303 to force the browser to switch from POST to GET
+        return RedirectResponse(url="/game_state", status_code=HTTP_303_SEE_OTHER)
 
     return JSONResponse(get_game_response(session_data))
 
 if __name__ == "__main__":
     uvicorn.run("unified_api:app", host="0.0.0.0", port=8000, reload=True)
+    print("Go to http://localhost:8000/ (.../solver)")
 

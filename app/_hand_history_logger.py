@@ -25,9 +25,23 @@ class HandHistoryLogger:
         return [card_to_string(c) for c in cards]
 
     def _format_probs(self, p):
-        # Handle tensor/numpy conversion safely and succinctly
+        # Convert tensor to numpy flat array
         p = p.detach().cpu().numpy().flatten() if hasattr(p, 'detach') else p.flatten()
-        return f"F:{p[0]:.0%}, C:{p[1]:.0%}, R:{sum(p[2:]):.0%}"
+        
+        parts = []
+        for i, prob in enumerate(p):
+            if i >= len(ACTION_MAP): break
+            
+            action_type, size = ACTION_MAP[i]
+            
+            if action_type == 0: label = "F"
+            elif action_type == 1: label = "C"
+            elif size == -1: label = "All"
+            else: label = f"R{size:,}" # e.g., r0.5, r1.0
+            
+            parts.append(f"{label}:{prob:.0%}")
+            
+        return ", ".join(parts)
 
     def log_start_hand(self, episode, hand_num, state):
         self.current_hand_actions = []
@@ -85,7 +99,7 @@ class HandHistoryLogger:
 
     def log_end_hand(self, episode_rewards, state):
         if self.verbose:
-            self.logger.info(f"- PROFIT: {episode_rewards[0]} chips (Avg: {episode_rewards[0]/state.big_blind:+.4f})\n")
+            self.logger.info(f"- PROFIT: {episode_rewards[0]} chips (Rew: {episode_rewards[0]/state.big_blind:+.4f})\n")
         return {'actions': self.current_hand_actions, 'rewards': episode_rewards}
 
     def log_feature_dump_if_needed(self, state, schema, predictions):

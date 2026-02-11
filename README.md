@@ -44,8 +44,10 @@ python -m cProfile -o testtrain.pstats -m unittest tests.test_training
 snakeviz testtrain.pstats
 ```
 
-### Play against a trained Agent
+### Using the Agent:
 ```bash
 python unified_api.py
-# Go to: http://127.0.0.1:5001
+# To play against: http://127.0.0.1:8000/
+# To use as a solver: http://127.0.0.1:8000/solver
 ```
+
