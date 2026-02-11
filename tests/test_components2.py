@@ -64,9 +64,7 @@ class TestAdvancedComponents(unittest.TestCase):
         # Cleanup temp directory after each test
         shutil.rmtree(self.test_dir)
 
-    # ----------------------------------------------------------------
     # 1. PERSISTENCE TESTS (Save/Load)
-    # ----------------------------------------------------------------
     def test_persistence_save_and_load(self):
         """Test that models and buffers can be saved and loaded without losing state."""
         br_path = os.path.join(self.test_dir, 'br_net.pt')
@@ -117,9 +115,7 @@ class TestAdvancedComponents(unittest.TestCase):
         for p1, p2 in zip(self.agent.br_network.parameters(), new_agent.br_network.parameters()):
             self.assertTrue(torch.equal(p1, p2), "BR Network weights failed to load correctly.")
 
-    # ----------------------------------------------------------------
     # 2. EPSILON DECAY TEST
-    # ----------------------------------------------------------------
     def test_epsilon_decay(self):
         """Test that epsilon decreases linearly and clamps at epsilon_end."""
         # Config: start=1.0, end=0.1, steps=100
@@ -139,9 +135,7 @@ class TestAdvancedComponents(unittest.TestCase):
         self.agent.step_count = 500
         self.assertEqual(self.agent.get_current_epsilon(), 0.1)
 
-    # ----------------------------------------------------------------
     # 3. TARGET NETWORK SYNC TEST
-    # ----------------------------------------------------------------
     def test_target_network_sync_frequency(self):
         """Test that target network updates ONLY when frequency is met."""
         # target_update_frequency is set to 5 in MOCK_CONFIG
@@ -189,9 +183,7 @@ class TestAdvancedComponents(unittest.TestCase):
         )
         self.assertTrue(params_match, "Target network failed to sync at the correct frequency.")
 
-    # ----------------------------------------------------------------
     # 4. RESERVOIR SAMPLING LOGIC TEST
-    # ----------------------------------------------------------------
     def test_sl_buffer_reservoir_sampling(self):
         """Test that SLBuffer handles capacity correctly using reservoir sampling logic."""
         capacity = 10

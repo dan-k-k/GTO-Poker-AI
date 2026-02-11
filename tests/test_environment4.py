@@ -149,7 +149,7 @@ class TestFinalEdgeCases(unittest.TestCase):
         # Action returns to P0.
         self.assertEqual(env.state.to_move, 0)
         
-        # Verify P0 CANNOT Raise (Optimization for Heads-Up).
+        # Verify P0 CANNOT Raise.
         legal_actions = env.state.get_legal_actions()
         
         # We now Assert that 2 (Raise) is NOT in legal actions
@@ -165,9 +165,7 @@ class TestFinalEdgeCases(unittest.TestCase):
         hole_cards = [cards(['Ac', 'Ad']), cards(['Kc', 'Kd']), cards(['Qc', 'Qd'])]
         env = self._setup_hand(num_players=3, hole_cards=hole_cards, stacks=[2000, 100, 100], dealer_pos=0)
 
-        # --- RIG THE DECK ---
         env.deck.cards = cards(['2s', '3h', '4c', '5d', '7s']) 
-        # --------------------
 
         # Action: P0 (UTG) raises to 200.
         state, done = env.step(action=2, amount=200)

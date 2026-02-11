@@ -57,7 +57,6 @@ class HandHistoryLogger:
             stage_map = {0: features_schema.preflop_cards, 1: features_schema.flop_cards, 2: features_schema.turn_cards, 3: features_schema.river_cards}
             feat_str = f"RS:{stage_map[state_before.stage].random_strength:.2f} | "
 
-        # AI Info - FIX: Handle missing state_values safely
         probs_str, e_rew_str = "--", "--"
         if predictions:
             if 'action_probs' in predictions: 

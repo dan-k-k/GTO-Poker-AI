@@ -52,7 +52,7 @@ class ReplayBuffer:
         self.size = min(self.size + 1, self.capacity)
 
     def sample(self, batch_size: int):
-        """Returns tensors directly to match the original API."""
+        """Returns tensors directly to match the API."""
         idx = np.random.randint(0, self.size, size=batch_size)
         return (torch.as_tensor(self.states[idx]), torch.as_tensor(self.actions[idx]), torch.as_tensor(self.rewards[idx]), torch.as_tensor(self.next_states[idx]), torch.as_tensor(self.dones[idx]), torch.as_tensor(self.masks[idx]))
 
@@ -85,14 +85,11 @@ class ReplayBuffer:
         self.masks[:load_size] = state['masks']
 
 class SLBuffer:
-    """Reservoir Buffer for Average Strategy (Optimized & Backward Compatible)."""
+    """Reservoir Buffer for Average Strategy."""
     
     def __init__(self, capacity: int, input_size: int = None): # Default None for pickle safety
         self.capacity = capacity
         self.input_size = input_size
-        
-        # We will initialize these if input_size is provided, otherwise they stay None
-        # until the first push or load
         self.state_buffer = None
         self.action_buffer = None
         
@@ -313,8 +310,7 @@ class NFSPAgent(NeuralNetworkAgent):
         if torch.isnan(current_q_values_).any(): raise RuntimeError("CRITICAL: BR Network output contains NaNs! Model is corrupted.")
         current_q_values = torch.gather(current_q_values_, 1, actions.unsqueeze(1)).squeeze(1)
         
-        # 2. Target = r + gamma * max Q(s', a')
-        # Double DQN: Use Main Net to choose action, Target Net to evaluate value
+        # 2. Target = r + gamma * max Q(s', a'). Double DQN: Use Main Net to choose action, Target Net to evaluate value
         target_q_values = self.br_network.compute_double_dqn_target(next_states, rewards, dones, self.br_target_network, self.gamma, next_legal_masks)
         
         # 3. Loss
@@ -392,7 +388,7 @@ class NFSPAgent(NeuralNetworkAgent):
             try:
                 torch.save(state_dict, temp_path)
                 if os.path.exists(filepath):
-                    os.remove(filepath) # Windows compatibility
+                    os.remove(filepath) 
                 os.rename(temp_path, filepath)
             except Exception as e:
                 print(f"Error saving model to {filepath}: {e}")

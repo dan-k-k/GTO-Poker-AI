@@ -107,7 +107,7 @@ class NFSPTrainer:
 
             state = next_state
 
-        # End of Hand / Showdown
+        # End of Hand -> Showdown
         final_stacks = state.stacks
         rewards = [final_stacks[i] - initial_stacks[i] for i in range(len(agents))]
 

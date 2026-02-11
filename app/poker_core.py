@@ -8,10 +8,8 @@ import random
 from treys import Evaluator, Card
 
 class Deck:
-    """
-    Standard 52-card deck with shuffling and dealing capabilities.
-    Maintains compatibility with existing integer-based system.
-    """
+    """Standard 52-card deck with shuffling and dealing capabilities.
+    Maintains compatibility with existing integer-based system."""
     
     def __init__(self, seed: Optional[int] = None):
         self.rng = random.Random(seed)
@@ -55,10 +53,8 @@ class Deck:
 
 @dataclass
 class GameState:
-    """
-    Centralized container for all game state variables.
-    Separates game data from game logic for cleaner architecture.
-    """
+    """Centralized container for all game state variables.
+    Separates game data from game logic for cleaner architecture."""
     
     # Basic game configuration
     num_players: int
@@ -141,18 +137,11 @@ class GameState:
         amount_to_call = current_max_bet - self.current_bets[player]
 
         # If the player doesn't have enough to even call, they can't raise.
-        if self.stacks[player] <= amount_to_call:
-            return None
+        if self.stacks[player] <= amount_to_call: return None
 
-        # The minimum increment for a raise is the size of the last raise,
-        # or the big blind if no raise has occurred yet this street.
         min_raise_increment = max(self.last_raise_size, self.big_blind)
-        
-        # This is the total additional amount the player must put in.
         required_additional_amount = amount_to_call + min_raise_increment
 
-        # If the player can afford a full raise, that's the minimum.
-        # Otherwise, their minimum (and only) raise is to go all-in.
         if self.stacks[player] >= required_additional_amount:
             return required_additional_amount
         else:
@@ -191,8 +180,6 @@ class HandEvaluator:
         # Convert cards to the treys format
         hand_treys = [Card.new(card_to_string(c)) for c in hand]
         board_treys = [Card.new(card_to_string(c)) for c in board]
-
-        # No more splitting! Just pass the arguments directly.
         return -self.evaluator.evaluate(board_treys, hand_treys)
 
     def get_rank_string(self, rank: int) -> str:
@@ -218,9 +205,7 @@ def get_betting_order(seat_id: int, dealer_pos: int, num_players: int) -> int:
     relative_position = (seat_id - dealer_pos) % num_players
     return (relative_position - 1 + num_players) % num_players
 
-# =============================================================================
 # UTILITY FUNCTIONS
-# =============================================================================
 
 def card_to_string(card_id: int) -> str:
     """Convert card ID (0-51) to string representation like '2s'."""

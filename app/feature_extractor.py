@@ -313,7 +313,7 @@ class FeatureExtractor:
             return
 
         prefix = 'board_made_rank_' if is_board else 'made_hand_rank_'
-        # --- Part 1: Component checks (work on any number of cards) ---
+        # --- Component checks ---
         ranks = [c // 4 for c in cards]
         counts = {r: ranks.count(r) for r in set(ranks)}
         freq = sorted(counts.values(), reverse=True)
@@ -331,7 +331,7 @@ class FeatureExtractor:
             if len(freq) > 1 and freq[1] == 2: # This means it's two pair
                 setattr(street_schema, f"{prefix}twopair", 1.0)
 
-        # --- Part 2: 5-card hand checks ---
+        # --- 5-card hand checks ---
         if len(cards) < 5:
             return # Not enough cards for straights, flushes, etc.
 
@@ -393,7 +393,7 @@ class FeatureExtractor:
             return None, []
 
         ranks = sorted(list(set([c // 4 for c in community_cards])))
-        # Add Ace for A-2-3-4-5 straights
+        # For A-2-3-4-5 straights
         if 12 in ranks:
             ranks.insert(0, -1) # Use -1 for the low Ace
 
@@ -444,18 +444,12 @@ class FeatureExtractor:
         evaluator = self.evaluator
         
         for _ in range(trials):
-            # Fast shuffle is often cheaper than complex sampling for small decks
             np.random.shuffle(deck) 
-            
-            # Slice the needed cards
             draw = deck[:cards_to_draw]
             opp_hole = draw[:2]
             runout = draw[2:]
-            
-            # Combine board (using list unpacking is faster than concatenation for small lists)
             final_board = [*community, *runout]
             
-            # Evaluate
             my_rank = evaluator.best_hand_rank(my_hole, final_board)
             opp_rank = evaluator.best_hand_rank(opp_hole, final_board)
             
@@ -465,10 +459,7 @@ class FeatureExtractor:
         return wins / trials if trials > 0 else 0.5
     
     def _get_preflop_equity_key(self, hole_cards: list) -> str:
-        """
-        Converts two integer hole cards into a standardized string key for equity lookup.
-        Example: [51, 47] -> "AA", [49, 45] -> "AKs", [49, 44] -> "AKo"
-        """
+        """Converts two integer hole cards into a standardized string key for equity lookup."""
         ranks_map = {0: '2', 1: '3', 2: '4', 3: '5', 4: '6', 5: '7', 6: '8', 7: '9', 8: 'T', 9: 'J', 10: 'Q', 11: 'K', 12: 'A'}
         
         ranks = sorted([c // 4 for c in hole_cards], reverse=True)
@@ -490,9 +481,7 @@ class FeatureExtractor:
 
         # Generate the key (e.g., "AKs") from the integer cards
         key = self._get_preflop_equity_key(hole_cards)
-        
-        # Return the equity from the dictionary, with a fallback of 0.0
-        return PREFLOP_EQUITY.get(key, 0.0)
+        return PREFLOP_EQUITY[key]
     
     def _get_street_cards_schema(self, stage: int) -> StreetFeatures:
         options = [self.schema.preflop_cards, self.schema.flop_cards, 
@@ -504,10 +493,7 @@ class FeatureExtractor:
         return options[stage]
     
     def update_betting_action(self, player_id: int, action: int, state_before_action, stage: int):
-        """
-        Update betting history based on the game state *before* the action occurred.
-        This function robustly handles state passed as either a GameState object or a dict.
-        """
+        """Update betting history based on the game state *before* the action occurred."""
         # Track all actions (not just aggressive ones)
         self._action_counts_this_street[stage] += 1
         
@@ -516,9 +502,6 @@ class FeatureExtractor:
         
         # Track the last aggressor
         self.last_aggressor = player_id
-
-        # An open-bet/raise is the first aggressive action on a street. This is
-        # indicated by `last_raiser` being None *before* this action occurs.
         is_dict = isinstance(state_before_action, dict)
         last_raiser = state_before_action.get('last_raiser') if is_dict else state_before_action.last_raiser
         is_first_aggressive_action = (last_raiser is None)

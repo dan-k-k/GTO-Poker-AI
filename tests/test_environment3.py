@@ -239,12 +239,10 @@ def test_simultaneous_elimination_results_in_tournament_winner(self):
         # P0 is Dealer. P1 is SB (100 chips), P2 is BB (100 chips).
         env = self._setup_hand(num_players=3, hole_cards=hole_cards, stacks=[2000, 100, 100], dealer_pos=0)
 
-        # --- FIX: Rig the deck to ensure P0 (AA) wins ---
         # We replace the deck with 5 safe low cards. 
         # Note: Deck.deal() pops from the end, so we list them in reverse order of dealing if order mattered.
         # Here, just a board of rags is sufficient.
         env.deck.cards = cards(['2s', '3h', '4c', '5d', '7s']) 
-        # ------------------------------------------------
 
         # Action: P0 (UTG) raises to 200.
         state, done = env.step(action=2, amount=200)

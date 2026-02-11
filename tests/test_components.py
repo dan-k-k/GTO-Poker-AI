@@ -65,14 +65,12 @@ class TestBuffers(unittest.TestCase):
         self.assertIn(3, actions_in_buffer)
 
     def test_rl_buffer_sample(self):
-        # FIX: Added input_size argument
         buffer = ReplayBuffer(capacity=10, input_size=FEATURE_VECTOR_SIZE)
         batch_size = 4
         for _ in range(5):
-            # Added dummy_mask to match new signature
             buffer.push(_create_dummy_vector(), 0, 0.0, _create_dummy_vector(), False, _create_dummy_mask())
         
-        # Unpack the 6 return values (mask added)
+        # Unpack the 6 return values
         states, actions, rewards, next_states, dones, next_masks = buffer.sample(batch_size)
         
         self.assertIsInstance(states, torch.Tensor)
@@ -125,7 +123,6 @@ class TestNFSPAgent(unittest.TestCase):
     def test_rl_learn_updates_weights(self):
         initial_params = [p.clone() for p in self.agent.br_network.parameters()]
         for _ in range(MOCK_CONFIG['agent']['batch_size'] + 1):
-            # Added mask to push
             self.agent.rl_buffer.push(_create_dummy_vector(), 0, 1.0, _create_dummy_vector(), False, _create_dummy_mask())
         self.agent.learn_rl()
         updated_params = [p.clone() for p in self.agent.br_network.parameters()]
@@ -169,7 +166,7 @@ class TestNFSPAgent(unittest.TestCase):
         
         self.assertEqual(len(self.agent.rl_buffer), 1, "Should have pushed exactly one experience.")
         
-        # FIX: Access internal arrays instead of unpacking .buffer[0]
+        # Access internal arrays instead of unpacking .buffer[0]
         s = self.agent.rl_buffer.states[0]
         a = self.agent.rl_buffer.actions[0]
         r = self.agent.rl_buffer.rewards[0]
@@ -202,7 +199,7 @@ class TestNFSPAgent(unittest.TestCase):
 
         self.assertEqual(len(self.agent.rl_buffer), 1, "Should have pushed the final hand experience.")
 
-        # FIX: Access internal arrays instead of unpacking .buffer[0]
+        # Access internal arrays instead of unpacking .buffer[0]
         s = self.agent.rl_buffer.states[0]
         a = self.agent.rl_buffer.actions[0]
         r = self.agent.rl_buffer.rewards[0]
@@ -212,9 +209,6 @@ class TestNFSPAgent(unittest.TestCase):
         self.assertEqual(a, pending_action, "Action index mismatch.")
         self.assertAlmostEqual(r, expected_reward, places=5, msg="Final reward mismatch.")
         self.assertTrue(done, "The experience should be marked as terminal (done=True).")
-
-    # NOTE: Intelligent Equity tests were removed because the provided NFSPAgent
-    # code does not contain the `_calculate_intelligent_equity` method or logic.
     
     def test_new_hand_resets_state(self):
         """

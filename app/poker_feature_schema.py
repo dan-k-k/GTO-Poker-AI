@@ -2,8 +2,7 @@
 import numpy as np
 from dataclasses import dataclass, fields, field
 
-# --- Reusable Blocks ---
-# feature dim length prone to changing!
+# Feature dim length prone to changing!
 
 @dataclass
 class BettingRoundFeatures:

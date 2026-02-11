@@ -323,9 +323,6 @@ class TestFeatureExtractor(unittest.TestCase):
         schema_fh = self.extractor.extract_features(state_fh)
         self.assertEqual(schema_fh.river_cards.board_made_rank_fullhouse, 1.0)
 
-    # REMOVED: test_equity_simulation_uses_imperfect_information
-    # Reason: Feature "Intelligent Equity" (opponent range prediction) was removed.
-
     def test_skip_random_equity_flag_works_as_intended(self):
         """
         Verifies the `skip_random_equity` flag correctly prevents
@@ -361,10 +358,8 @@ class TestFeatureExtractor(unittest.TestCase):
         # Reset the equity for ALL processed streets.
         schema_with_equity.preflop_cards.random_strength = 0.0
         schema_with_equity.flop_cards.random_strength = 0.0
-        # NOTE: Removed schema_with_equity.dynamic.hand_strength = 0.0 (Feature Removed)
 
-        self.assertEqual(schema_with_equity, schema_without_equity,
-                         "Other features should not change when skipping random equity")
+        self.assertEqual(schema_with_equity, schema_without_equity, "Other features should not change when skipping random equity")
 
 if __name__ == '__main__':
     unittest.main()

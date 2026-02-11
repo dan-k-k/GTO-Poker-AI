@@ -105,7 +105,7 @@ class TestIntegrationFeatures(unittest.TestCase):
         dummy_env.state.get_min_raise_amount = MagicMock(return_value=2)
         dummy_env.state.copy = MagicMock(return_value=dummy_state) # IMPORTANT for observe
 
-        # FIX: Configure get_state_dict to return REAL data, not a MagicMock
+        # Configure get_state_dict to return REAL data, not a MagicMock
         dummy_env.get_state_dict.return_value = {
             'pot': 200,
             'stacks': [100, 100],

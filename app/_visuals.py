@@ -7,7 +7,6 @@ from app.poker_core import card_to_string, GameState
 # This class acts as a central "control panel" for all visual settings.
 class LayoutManager:
     def __init__(self):
-        # --- CUSTOMIZATION PANEL
         
         # Overall Image Size
         self.IMG_WIDTH = 600
@@ -31,7 +30,6 @@ class LayoutManager:
         self.PLAYER_VERTICAL_OFFSET = -10 # How far player cards are from the top/bottom edge
         self.COMMUNITY_CARD_SPACING = 10
         self.DEALER_BUTTON_OFFSET = 30
-        # ---
 
         # --- Calculated Positions ---
         self.center_x, self.center_y = self.IMG_WIDTH / 2, self.IMG_HEIGHT / 2

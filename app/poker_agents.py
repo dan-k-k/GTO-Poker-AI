@@ -94,8 +94,7 @@ class BRNet(nn.Module):
         return targets
 
 class ASNet(nn.Module):
-    """Standard Feed-Forward Network for Classification.
-    Used for the Average Strategy (Supervised Learning)."""
+    """Standard Feed-Forward Network for Classification (Supervised Learning)."""
     def __init__(self, input_size: int = None):
         super().__init__()
         
@@ -185,9 +184,6 @@ class NeuralNetworkAgent(PokerAgent):
         # === PATH A: Best Response (Greedy + Epsilon) ===
         if use_greedy:
             if random.random() < epsilon:
-                # --- FIX STARTS HERE ---
-                # Don't choose uniformly from all indices. 
-                # Categorize: 0=Fold, 1=Call, 2+=Raise
                 
                 legal_indices = np.where(legal_action_mask)[0]
                 
@@ -195,8 +191,6 @@ class NeuralNetworkAgent(PokerAgent):
                 can_call = 1 in legal_indices
                 raise_indices = [i for i in legal_indices if i >= 2]
                 
-                # Define probabilities for categories: [Fold, Call, Raise]
-                # Adjust these to encourage "normal" poker behavior during exploration
                 category_probs = []
                 available_categories = []
                 
@@ -224,10 +218,8 @@ class NeuralNetworkAgent(PokerAgent):
                     action_index = np.random.choice(raise_indices) # Uniform among raise sizes
                 
                 is_random_exploration = True 
-                # --- FIX ENDS HERE ---
                 
             else:
-                # (Standard Argmax Logic)
                 masked_q_values = q_values.copy()
                 masked_q_values[~legal_action_mask] = -float('inf')
                 action_index = np.argmax(masked_q_values)
@@ -303,10 +295,8 @@ class NeuralNetworkAgent(PokerAgent):
 
 
 class GTOAgent(NeuralNetworkAgent):
-    """
-    GTO poker agent that uses trained PyTorch models.
-    Layer 1 agent.
-    """
+    """GTO poker agent that uses trained PyTorch models.
+    Layer 1 agent."""
     
     def __init__(self, seat_id: int, model_path: str = "gto_average_strategy.pt"):
         super().__init__(seat_id)
@@ -325,10 +315,8 @@ class GTOAgent(NeuralNetworkAgent):
 
 
 class RandomBot(PokerAgent):
-    """
-    A simple poker agent that makes random legal actions.
-    Useful for testing and as a baseline opponent.
-    """
+    """A simple poker agent that makes random legal actions.
+    Useful for testing and as a baseline opponent.""" 
     def __init__(self, seat_id: int, aggression: float = 0.3):
 
         super().__init__(seat_id)
