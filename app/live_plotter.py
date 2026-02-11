@@ -13,7 +13,7 @@ class LivePlotter:
                 
         # Check if CSV exists to ensure headers
         if not os.path.exists(self.csv_file):
-            pd.DataFrame(columns=['hand_id', 'vpip', 'pfr', 'reward', 'afq', 'entropy']).to_csv(self.csv_file, index=False)
+            pd.DataFrame(columns=['hand_id', 'vpip', 'pfr', 'reward', 'afq', 'entropy', 'wtsd']).to_csv(self.csv_file, index=False)
 
     def update(self, hand_data: dict, episode_num: int):
         stats = self._extract_stats(hand_data)
@@ -50,14 +50,18 @@ class LivePlotter:
             
             # --- Plot 1: Preflop Strategy (VPIP / PFR) ---
             ax1.plot(plot_data.index, plot_data['vpip'], label='VPIP', color='blue', linewidth=1.5)
+            ax1.axhline(0.90, color='blue', linestyle='--', alpha=0.3, label='Ref VPIP (~0.9)')
             ax1.plot(plot_data.index, plot_data['pfr'], label='PFR', color='orange', linewidth=1.5)
-            
+            ax1.axhline(0.55, color='orange', linestyle='--', alpha=0.3, label='Ref PFR (~0.55)')
+            if 'wtsd' in plot_data:
+                ax1.plot(plot_data.index, plot_data['wtsd'], label='WTSD', color='green', linewidth=1.5)
+                ax1.axhline(0.30, color='green', linestyle='--', alpha=0.3, label='Ref WTSD')
+
             # Reference Lines (Heads Up Norms)
             # VPIP in HU is very high (SB plays ~80-95%)
-            ax1.axhline(0.90, color='blue', linestyle='--', alpha=0.3, label='Ref VPIP (~0.9)')
-            ax1.axhline(0.55, color='orange', linestyle='--', alpha=0.3, label='Ref PFR (~0.55)')
+
             ax1.set_title('P0 AS Preflop Strategy')
-            ax1.legend(loc='lower right', fontsize='small')
+            ax1.legend(loc='lower left', fontsize='small')
             ax1.grid(True, alpha=0.2)
             # ax1.set_ylim(-0.05, 1.05)
 
@@ -65,7 +69,7 @@ class LivePlotter:
             ax2.plot(plot_data.index, plot_data['reward'], color='green', linewidth=1)
             ax2.axhline(0, color='black', lw=1, linestyle='-')
             current_reward = rolling['reward'].iloc[-1] if not rolling.empty else 0
-            ax2.set_title(f"P0 AS Avg Reward (Last: {current_reward:.2f})")
+            ax2.set_title(f"P0 AS Avg Reward against P1 Any (Last: {current_reward:.2f})")
             ax2.grid(True, alpha=0.2)
 
             # --- Plot 3: Aggression Frequency (AFq) ---
@@ -93,7 +97,7 @@ class LivePlotter:
         if not self.csv_buffer: return
         
         df = pd.DataFrame(self.csv_buffer)
-        expected_cols = ['hand_id', 'vpip', 'pfr', 'reward', 'afq', 'entropy']
+        expected_cols = ['hand_id', 'vpip', 'pfr', 'reward', 'afq', 'entropy', 'wtsd']
         # Ensure columns exist even if data is missing
         for col in expected_cols:
             if col not in df.columns:
@@ -125,7 +129,18 @@ class LivePlotter:
             # If no entropy data found, default to 0.0 so the plot isn't blank
             avg_ent = np.mean(valid_entropies) if valid_entropies else 0.0
 
-            return {'vpip': vpip, 'pfr': pfr, 'reward': hand_data['rewards'][0], 'afq': afq, 'entropy': avg_ent}
+            # Get all actions from the hand (both players)
+            all_actions = hand_data.get('actions', [])
+            
+            # Check if anyone folded (Action Type 0 = Fold)
+            p0_folded = any(a['player'] == 0 and a['action_type'] == 0 for a in all_actions)
+            p1_folded = any(a['player'] == 1 and a['action_type'] == 0 for a in all_actions)
+            
+            # If neither player folded, the hand went to showdown
+            wtsd = 1.0 if (not p0_folded and not p1_folded) else 0.0
+
+            # Return the dictionary with 'wtsd' added
+            return {'vpip': vpip, 'pfr': pfr, 'reward': hand_data['rewards'][0], 'afq': afq, 'entropy': avg_ent, 'wtsd': wtsd}
         except Exception:
             return None
         
