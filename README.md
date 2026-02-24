@@ -48,7 +48,7 @@ snakeviz testtrain.pstats
 ### Using the Agent:
 ```bash
 python unified_api.py
-# To play against: http://127.0.0.1:8000/
-# To use as a solver: http://127.0.0.1:8000/solver
+# Play against: http://127.0.0.1:8000/
+# Use as a solver: http://127.0.0.1:8000/solver
 ```
 
