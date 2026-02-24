@@ -9,6 +9,7 @@ The agent knows its opponent's range by using its opponent's trained network to 
 
 ##### Example hand_history.log
 ![Poker Live Demo](images/Pokerexamplelog5-2.gif)
+![Poker Live Demo](images/training_dashboard_early.png)
 
 ###### 1. Clone the Repository
 ```bash
