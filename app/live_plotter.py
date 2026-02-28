@@ -11,7 +11,6 @@ class LivePlotter:
         self.batch_size = batch_size 
         self.csv_buffer = []
                 
-        # Check if CSV exists to ensure headers
         if not os.path.exists(self.csv_file):
             pd.DataFrame(columns=['hand_id', 'vpip', 'pfr', 'reward', 'afq', 'entropy', 'wtsd']).to_csv(self.csv_file, index=False)
 
@@ -36,10 +35,8 @@ class LivePlotter:
             if 'hand_id' in df.columns:
                 df.set_index('hand_id', inplace=True)
             
-            # Calculate rolling average
             rolling = df.rolling(window=window_size, min_periods=10).mean()
             
-            # Downsample for speed
             if len(rolling) > 5000:
                 plot_data = rolling.iloc[::max(1, len(rolling)//2000)]
             else:
@@ -48,7 +45,7 @@ class LivePlotter:
             fig, axes = plt.subplots(2, 2, figsize=(12, 10))
             (ax1, ax2), (ax3, ax4) = axes
             
-            # Plot 1: Preflop Strategy (VPIP / PFR)
+            # Plot 1: Preflop strategy (VPIP / PFR)
             ax1.plot(plot_data.index, plot_data['vpip'], label='VPIP', color='blue', linewidth=1.5)
             ax1.axhline(0.90, color='blue', linestyle='--', alpha=0.3, label='Ref VPIP (~0.9)')
             ax1.plot(plot_data.index, plot_data['pfr'], label='PFR', color='orange', linewidth=1.5)
@@ -57,7 +54,7 @@ class LivePlotter:
                 ax1.plot(plot_data.index, plot_data['wtsd'], label='WTSD', color='green', linewidth=1.5)
                 ax1.axhline(0.30, color='green', linestyle='--', alpha=0.3, label='Ref WTSD')
 
-            # Reference Lines (Heads Up Norms)
+            # Reference lines (HU expected)
             # VPIP in HU is very high (SB plays ~80-95%)
 
             ax1.set_title('P0 AS Preflop Strategy')
@@ -72,7 +69,7 @@ class LivePlotter:
             ax2.set_title(f"P0 AS Avg Reward against P1 Any (Last: {current_reward:.2f})")
             ax2.grid(True, alpha=0.2)
 
-            # Plot 3: Aggression Frequency (AFq)
+            # Plot 3: Aggression frequency (AFq)
             ax3.plot(plot_data.index, plot_data['afq'], color='red', linewidth=1.5)
             ax3.axhline(0.50, color='red', linestyle='--', alpha=0.3, label='Ref AFq (0.5)')
             ax3.set_title('P0 AS Aggression Freq')
@@ -109,7 +106,7 @@ class LivePlotter:
 
     def _extract_stats(self, hand_data):
         try:
-            # We are tracking Player 0 (The Agent)
+            # We are tracking Player 0 (agent)
             p0_actions = [a for a in hand_data.get('actions', []) if a['player'] == 0]
             if not p0_actions: return None
             if p0_actions[0].get('policy', 'Unknown') == 'BR': return None 
@@ -119,7 +116,7 @@ class LivePlotter:
             vpip = 1.0 if any(a['action_type'] in [1, 2] for a in preflop) else 0.0
             pfr = 1.0 if any(a['action_type'] == 2 for a in preflop) else 0.0
             
-            # Aggression Freq (Raise / (Call + Raise + Fold))
+            # Aggression freq (raise / (call + raise + fold))
             raise_count = sum(1 for a in p0_actions if a['action_type'] == 2)
             afq = raise_count / len(p0_actions) if p0_actions else 0.0
 
@@ -132,7 +129,7 @@ class LivePlotter:
             # Get all actions from the hand (both players)
             all_actions = hand_data.get('actions', [])
             
-            # Check if anyone folded (Action Type 0 = Fold)
+            # Check if anyone folded (Action type 0 = fold)
             p0_folded = any(a['player'] == 0 and a['action_type'] == 0 for a in all_actions)
             p1_folded = any(a['player'] == 1 and a['action_type'] == 0 for a in all_actions)
             

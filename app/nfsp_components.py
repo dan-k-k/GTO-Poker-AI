@@ -14,9 +14,9 @@ from app.poker_feature_schema import PokerFeatureSchema, StreetFeatures
 from app.poker_core import GameState
 from app.feature_extractor import FeatureExtractor
 
-class ReplayBuffer:
-    """RL Replay Buffer for Best Response Policy (DQN-style)."""
-    
+class ReplayBuffer:   
+    """RL replay buffer for Best Response (DQN)."""
+ 
     def __init__(self, capacity: int, input_size: int, action_dim: int = NUM_ACTIONS):
         self.capacity = capacity
         self.ptr = 0
@@ -34,13 +34,12 @@ class ReplayBuffer:
         self.masks = np.zeros((self.capacity, self.action_dim), dtype=np.bool_)
         
     def push(self, state, action, reward, next_state, done, next_legal_mask):
-        """Stores experience in the pre-allocated arrays."""
-        if state.shape[0] != self.input_size: raise ValueError(f"Buffer Mismatch: Expected state dim {self.input_size}, got {state.shape[0]}")
-        if np.isnan(state).any() or np.isinf(state).any(): raise ValueError("CRITICAL: NaNs or Infs detected in state vector being pushed to buffer.")
-        if not np.isfinite(state).all(): raise ValueError("CRITICAL: NaNs or Infs detected in 'state' vector.")
-        if not np.isfinite(next_state).all(): raise ValueError("CRITICAL: NaNs or Infs detected in 'next_state' vector.")
-        if not np.isfinite(reward): raise ValueError(f"CRITICAL: Reward is not finite: {reward}")
-        if action < 0 or action >= self.action_dim: raise ValueError(f"CRITICAL: Invalid action index {action}")
+        if state.shape[0] != self.input_size: raise ValueError(f"Buffer Mismatch: expected state dim {self.input_size}, got {state.shape[0]}")
+        if np.isnan(state).any() or np.isinf(state).any(): raise ValueError("Critical: NaNs or infs detected in state vector being pushed to buffer.")
+        if not np.isfinite(state).all(): raise ValueError("Critical: NaNs or infs detected in 'state' vector.")
+        if not np.isfinite(next_state).all(): raise ValueError("Critical: NaNs or infs detected in 'next_state' vector.")
+        if not np.isfinite(reward): raise ValueError(f"Critical: reward is not finite: {reward}")
+        if action < 0 or action >= self.action_dim: raise ValueError(f"Critical: invalid action index {action}")
         self.states[self.ptr] = state
         self.actions[self.ptr] = action
         self.rewards[self.ptr] = reward
@@ -52,7 +51,6 @@ class ReplayBuffer:
         self.size = min(self.size + 1, self.capacity)
 
     def sample(self, batch_size: int):
-        """Returns tensors directly to match the API."""
         idx = np.random.randint(0, self.size, size=batch_size)
         return (torch.as_tensor(self.states[idx]), torch.as_tensor(self.actions[idx]), torch.as_tensor(self.rewards[idx]), torch.as_tensor(self.next_states[idx]), torch.as_tensor(self.dones[idx]), torch.as_tensor(self.masks[idx]))
 
@@ -60,7 +58,6 @@ class ReplayBuffer:
         return self.size
     
     def __getstate__(self):
-        """Only save the valid parts of the arrays to save disk space."""
         if self.size < self.capacity:
             return {'capacity': self.capacity, 'input_size': self.input_size, 'action_dim': self.action_dim, 'ptr': self.ptr, 'size': self.size, 'states': self.states[:self.size], 'next_states': self.next_states[:self.size], 'actions': self.actions[:self.size], 'rewards': self.rewards[:self.size], 'dones': self.dones[:self.size], 'masks': self.masks[:self.size]}
         else:
@@ -99,14 +96,12 @@ class SLBuffer:
         self.total_count = 0 
         
     def _init_buffers(self, input_size):
-        """Helper to allocate the numpy arrays."""
         self.input_size = input_size
         self.state_buffer = np.zeros((self.capacity, input_size), dtype=np.float32)
         self.action_buffer = np.zeros(self.capacity, dtype=np.int64)
 
     def push(self, state: np.ndarray, action_index: int):
-        """Store state-action_index pair using Random Replacement."""
-        if not np.isfinite(state).all(): raise ValueError("Critical: SL Buffer received NaN/Inf state.")
+        if not np.isfinite(state).all(): raise ValueError("Critical: SL buffer received NaN/inf state.")
         if self.state_buffer is None:
             self._init_buffers(state.shape[0])
 
@@ -129,11 +124,11 @@ class SLBuffer:
         return self.size
 
     def __getstate__(self):
-        """Called when saving: only save the efficient numpy arrays."""
+        """Called when saving."""
         return {'capacity': self.capacity,'input_size': self.input_size,'state_buffer': self.state_buffer,'action_buffer': self.action_buffer,'size': self.size,'total_count': self.total_count}
 
     def __setstate__(self, state):
-        """Called when loading: handle both old (list) and new (dict) formats."""
+        """Called when loading."""
         
         # Loading a new buffer
         if isinstance(state, dict):
@@ -141,7 +136,7 @@ class SLBuffer:
             
         # Loading an old buffer
         elif 'buffer' in state:
-            print("  Converting legacy SLBuffer to optimized format...")
+            print("Converting legacy SLBuffer to optimised format...")
             self.capacity = state['capacity']
             self.total_count = state['total_count']
             old_buffer_list = state['buffer']
@@ -194,8 +189,8 @@ class NFSPAgent(NeuralNetworkAgent):
         self.br_target_network.eval()
         self.as_network = ASNet(input_size=input_size)
         
-        self.br_optimizer = optim.Adam(self.br_network.parameters(), lr=lr)
-        self.as_optimizer = optim.Adam(self.as_network.parameters(), lr=lr)
+        self.br_optimiser = optim.Adam(self.br_network.parameters(), lr=lr)
+        self.as_optimiser = optim.Adam(self.as_network.parameters(), lr=lr)
         
         self.target_rl_cap = buffer_config['rl_buffer_capacity']
         self.target_sl_cap = buffer_config['sl_buffer_capacity']
@@ -256,7 +251,7 @@ class NFSPAgent(NeuralNetworkAgent):
         self.feature_extractor.update_betting_action(player_id, action_taken, state_before_action, state_before_action.stage)
             
     def observe_showdown(self, showdown_state):
-        """The hand is over. We must close the loop on the LAST action taken. This provides the final reward (S_last -> S_terminal)."""
+        """The hand is over; close the loop on last action. (S_last -> S_terminal)."""
         my_stack_before = showdown_state.get('stacks_before', {}).get(self.seat_id, 0)
         my_stack_after = showdown_state.get('stacks_after', {}).get(self.seat_id, 0)
         raw_reward = my_stack_after - my_stack_before
@@ -277,19 +272,17 @@ class NFSPAgent(NeuralNetworkAgent):
             
             self._attempt_learning_step()
 
-        # Clear pending variables
         self.pending_state = None
         self.pending_action = None
             
     def _attempt_learning_step(self):
-        """Helper to check frequency and trigger learning."""
         self.step_count += 1
         if self.step_count % self.update_frequency == 0:
             self.learn_rl()
             self.learn_sl()
 
     def learn_rl(self):
-        """Perform Double DQN learning step for Best Response network."""
+        """Perform Double DQN learning step BR."""
         if len(self.rl_buffer) < self.batch_size:
             return
             
@@ -311,22 +304,22 @@ class NFSPAgent(NeuralNetworkAgent):
             crash_path = os.path.join(crash_dir, "crash_states.pt")
             torch.save(states, crash_path)
             raise RuntimeError(f"Critical: BR Training Loss is {loss.item()}! Stopping to prevent pollution.")
-        self.br_optimizer.zero_grad()
+        self.br_optimiser.zero_grad()
         loss.backward()
         for name, param in self.br_network.named_parameters():
             if param.grad is not None:
                 if torch.isnan(param.grad).any():
                     raise RuntimeError(f"Critical: NaN gradient detected in {name} BEFORE clipping.")
         total_norm = torch.nn.utils.clip_grad_norm_(self.br_network.parameters(), 1.0)
-        if torch.isnan(total_norm) or torch.isinf(total_norm): raise RuntimeError("Critical: Gradients exploded (NaN/Inf) even after clipping.")
-        self.br_optimizer.step()
+        if torch.isnan(total_norm) or torch.isinf(total_norm): raise RuntimeError("Critical: Gradients exploded (NaN/inf) even after clipping.")
+        self.br_optimiser.step()
         
         # Sync Target Network
         if self.step_count % self.target_update_frequency == 0:
             self.br_target_network.load_state_dict(self.br_network.state_dict())
         
     def learn_sl(self):
-        """Perform supervised learning step for Average Strategy network."""
+        """Perform SL step for AS."""
         if len(self.sl_buffer) < self.batch_size:
             return
             
@@ -337,13 +330,13 @@ class NFSPAgent(NeuralNetworkAgent):
 
         loss = nn.CrossEntropyLoss()(action_logits, action_indices)
 
-        self.as_optimizer.zero_grad()
+        self.as_optimiser.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.as_network.parameters(), 1.0)
-        self.as_optimizer.step()
+        self.as_optimiser.step()
     
     def get_current_epsilon(self) -> float:
-        """Calculates linear decay based on current step_count."""
+        """Linear decay based on current step_count."""
         if self.step_count >= self.epsilon_decay_steps:
             return self.epsilon_end
         # Linear
@@ -363,7 +356,7 @@ class NFSPAgent(NeuralNetworkAgent):
             self.use_average_strategy_this_hand = random.random() < self.eta
 
     def _get_current_street_schema(self, schema: PokerFeatureSchema, stage: int) -> StreetFeatures:
-        """A helper to get the feature object for the current street."""
+        """Get the feature object for the current street."""
         if stage == 1:
             return schema.flop
         elif stage == 2:
@@ -384,10 +377,10 @@ class NFSPAgent(NeuralNetworkAgent):
                 print(f"Error saving model to {filepath}: {e}")
                 if os.path.exists(temp_path): os.remove(temp_path)
 
-        br_state = {'model_state_dict': self.br_network.state_dict(),'target_model_state_dict': self.br_target_network.state_dict(),'optimizer_state_dict': self.br_optimizer.state_dict(),'step_count': self.step_count}
+        br_state = {'model_state_dict': self.br_network.state_dict(),'target_model_state_dict': self.br_target_network.state_dict(),'optimiser_state_dict': self.br_optimiser.state_dict(),'step_count': self.step_count}
         save_atomic(br_state, br_path)
 
-        as_state = {'model_state_dict': self.as_network.state_dict(),'optimizer_state_dict': self.as_optimizer.state_dict()}
+        as_state = {'model_state_dict': self.as_network.state_dict(),'optimiser_state_dict': self.as_optimiser.state_dict()}
         save_atomic(as_state, as_path)
             
     def load_models(self, br_path: str, as_path: str):
@@ -396,7 +389,7 @@ class NFSPAgent(NeuralNetworkAgent):
         try:
             checkpoint_br = torch.load(br_path, map_location='cpu')
             self.br_network.load_state_dict(checkpoint_br['model_state_dict'])
-            self.br_optimizer.load_state_dict(checkpoint_br['optimizer_state_dict'])
+            self.br_optimiser.load_state_dict(checkpoint_br['optimiser_state_dict'])
             self.step_count = checkpoint_br.get('step_count', 0)
             
             if 'target_model_state_dict' in checkpoint_br:
@@ -407,7 +400,7 @@ class NFSPAgent(NeuralNetworkAgent):
             
             checkpoint_as = torch.load(as_path, map_location='cpu')
             self.as_network.load_state_dict(checkpoint_as['model_state_dict'])
-            self.as_optimizer.load_state_dict(checkpoint_as['optimizer_state_dict'])
+            self.as_optimiser.load_state_dict(checkpoint_as['optimiser_state_dict'])
             
             print(f"Loaded NFSP models from {br_path}")
         except Exception as e:
@@ -441,7 +434,7 @@ class NFSPAgent(NeuralNetworkAgent):
 
         current_dim = PokerFeatureSchema.get_vector_size()
         if new_rl.input_size != current_dim:
-            raise ValueError(f"DIMENSION MISMATCH: RL Buffer has {new_rl.input_size} features, "
+            raise ValueError(f"Dimension Mismatch: RL Buffer has {new_rl.input_size} features, "
                              f"but model expects {current_dim}. Did you change the FeatureExtractor?")
         if np.isnan(new_rl.states[:new_rl.size]).any():
             raise ValueError("Critical: Loaded RL Buffer contains NaN values. The save file is corrupted.")

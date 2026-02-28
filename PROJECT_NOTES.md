@@ -3,6 +3,7 @@
 ## Current Focus
 - Remote API/Docker so anyone can play against the trained agent
 - Performance
+- A better eval method would be to track play %s against heads-up GTO
   
 ## Long-term Goals
 - Support for > 2 players per table (more expressive features needed, e.g. blocker ranks)

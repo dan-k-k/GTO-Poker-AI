@@ -12,7 +12,7 @@ class TestAdvancedTexasHoldemEnv(unittest.TestCase):
     """This focuses on edge cases, illegal actions, complex tournament dynamics, and difficult showdown scenarios."""
 
     def setUp(self):
-        print(f"\n Running Test: {self.id()} ")
+        print(f"\n Running test: {self.id()} ")
 
     def _setup_hand(self, num_players=2, hole_cards=None, community=None, stacks=None, dealer_pos=0):
         env = TexasHoldemEnv(num_players=num_players, starting_stack=2000, small_blind=10, big_blind=20)

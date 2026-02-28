@@ -36,7 +36,7 @@ class TestFeatureExtractor(unittest.TestCase):
 
     def test_hand_static_features(self):
         """Tests features that are static for the entire hand (position, hole cards)."""
-        print("\n Testing Hand-Static Features ")
+        print("\n Testing hand-static features ")
         
         state1 = self._create_base_state(
             hole_cards=[cards(['Ac', 'Ad']), cards(['7h', '2s'])],
@@ -61,7 +61,7 @@ class TestFeatureExtractor(unittest.TestCase):
 
     def test_dynamic_features_at_decision_point(self):
         """Tests features that change with every action (stacks, pot odds, SPR)."""
-        print("\n Testing Action-Dependent Dynamic Features ")
+        print("\n Testing action-dependent dynamic features ")
         state = self._create_base_state(
             stage=1, community=cards(['Jc', '8d', '2s']),
             pot=100, big_blind=10, starting_stack=200, num_players=2,
@@ -86,14 +86,14 @@ class TestFeatureExtractor(unittest.TestCase):
         self.assertAlmostEqual(schema.dynamic.opp_stack_bb, expected_opp_stack_norm)
         self.assertAlmostEqual(schema.dynamic.pot_bb, expected_pot_norm)
         self.assertAlmostEqual(schema.dynamic.effective_stack_bb, expected_my_stack_norm)
-        self.assertAlmostEqual(schema.dynamic.pot_odds, 50 / 150, msg="Pot odds incorrect") # it should be 0.333 since pot defined earlier DOES contain opp bet this street.
+        self.assertAlmostEqual(schema.dynamic.pot_odds, 50 / 150, msg="Pot odds incorrect") # it should be 1/3 since pot defined earlier DOES contain opp's bet this street.
         self.assertAlmostEqual(schema.dynamic.bet_faced_ratio, 0.5, msg="Bet faced ratio incorrect")
         self.assertAlmostEqual(schema.dynamic.spr, expected_spr_norm, msg="SPR incorrect")
         self.assertEqual(schema.dynamic.player_has_initiative, 0.0, "Initiative should be with opponent")
 
     def test_card_based_street_features(self):
         """Tests both player-specific and board-only card features (made hands, draws)."""
-        print("\n Testing Card-Based Street Features (Player and Board) ")
+        print("\n Testing card-based street features (player and board) ")
         
         state_2p = self._create_base_state(stage=1, hole_cards=[cards(['As', 'Kh'])], community=cards(['Ac', 'Kc', '7d']))
         schema_2p = self.extractor.extract_features(state_2p)
@@ -179,8 +179,8 @@ class TestFeatureExtractor(unittest.TestCase):
         self.assertEqual(schema7.flop_cards.has_flush_blocker, 0.0)
 
     def test_board_texture_features(self):
-        """Tests the feature extractor's ability to analyze complex board textures."""
-        print("\n Testing Complex Board Texture Features ")
+        """Tests the feature extractor's ability to analyse board textures."""
+        print("\n Testing complex board texture features ")
 
         self.extractor.new_hand()
         opp_extractor = FeatureExtractor(seat_id=1) 
@@ -226,7 +226,7 @@ class TestFeatureExtractor(unittest.TestCase):
 
     def test_full_hand_history_and_separation(self):
         """Simulates a multi-street hand to verify historical vs dynamic data."""
-        print("\n Testing Full Hand History & Past/Present Separation ")
+        print("\n Testing full hand history & past/present separation ")
         self.extractor.new_hand()
         
         state_p1_open = self._create_base_state(pot=3, stage=0, current_bets=[2, 1])
@@ -265,7 +265,7 @@ class TestFeatureExtractor(unittest.TestCase):
 
     def test_opponent_perspective_is_mirrored(self):
         """Ensures the FeatureExtractor's logic is symmetrical."""
-        print("\n Testing Opponent Perspective Mirroring ")
+        print("\n Testing opponent perspective mirroring ")
         my_extractor = FeatureExtractor(seat_id=0)
         opp_extractor = FeatureExtractor(seat_id=1)
 
@@ -299,7 +299,7 @@ class TestFeatureExtractor(unittest.TestCase):
 
     def test_rare_board_made_hands(self):
         """Tests that the extractor correctly identifies rare made hands on the board."""
-        print("\n Testing Board-Only Made Hands ")
+        print("\n Testing board-only made hands ")
 
         self.extractor.new_hand()
         state_flush = self._create_base_state(stage=3, community=cards(['2h', '5h', '8h', 'Th', 'Kh']))
@@ -317,11 +317,8 @@ class TestFeatureExtractor(unittest.TestCase):
         self.assertEqual(schema_fh.river_cards.board_made_rank_fullhouse, 1.0)
 
     def test_skip_random_equity_flag_works_as_intended(self):
-        """
-        Verifies the `skip_random_equity` flag correctly prevents
-        the random_strength calculation without altering other features.
-        """
-        print("\n Testing skip_random_equity Flag ")
+        """Verifies the `skip_random_equity` flag correctly prevents the random_strength calculation without altering other features."""
+        print("\n Testing skip_random_equity flag ")
         state = self._create_base_state(
             stage=1, 
             hole_cards=[cards(['As', 'Kh'])], 

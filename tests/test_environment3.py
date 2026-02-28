@@ -12,7 +12,7 @@ class TestHyperRigorousHoldemEnv(unittest.TestCase):
     """This suite focuses on complex side pots, blind/stack scenarios, and the state machine."""
 
     def setUp(self):
-        print(f"\n Running Test: {self.id()} ")
+        print(f"\n Running test: {self.id()} ")
 
     def _setup_hand(self, num_players=2, hole_cards=None, community=None, stacks=None, dealer_pos=0):
         env = TexasHoldemEnv(num_players=num_players, starting_stack=2000, small_blind=10, big_blind=20)
@@ -62,17 +62,12 @@ class TestHyperRigorousHoldemEnv(unittest.TestCase):
         return env
 
     def test_multiple_side_pots_with_split_pot(self):
-        """
-        Tests a 4-way all-in with two side pots, where the first side pot is split.
-        P3 (short), Main Pot
-        P1, P2 (medium), Side Pot 1
-        P0 (deep), Side Pot 2
-        """
+        """Tests a 4-way all-in with two side pots, where the first side pot is split."""
         hole_cards = [
-            cards(['Ac', 'Ad']),  # P0, Deep Stack, Wins Side Pot 2
-            cards(['Kc', '9c']),  # P1, Medium Stack, Splits Main Pot & Side Pot 1
-            cards(['Kh', '9h']),  # P2, Medium Stack, Splits Main Pot & Side Pot 1
-            cards(['Qc', 'Qd'])   # P3, Short Stack, Loses everything
+            cards(['Ac', 'Ad']),  # P0, Deep stack, wins side pot 2
+            cards(['Kc', '9c']),  # P1, Medium stack, splits main pot & side pot 1
+            cards(['Kh', '9h']),  # P2, Medium stack, splits main pot & side pot 1
+            cards(['Qc', 'Qd'])   # P3, Short stack, loses everything
         ]
         stacks = [2000, 1000, 1000, 200]
         env = self._setup_hand(num_players=4, hole_cards=hole_cards, stacks=stacks, dealer_pos=3)
@@ -159,7 +154,7 @@ class TestHyperRigorousHoldemEnv(unittest.TestCase):
     def test_simultaneous_elimination_results_in_tournament_winner(self):
         """Tests that a hand eliminating multiple players correctly ends the tournament."""
         hole_cards = [cards(['Ac', 'Ad']), cards(['Kc', 'Kd']), cards(['Qc', 'Qd'])]
-        # P0 is Dealer. P1 is SB (100 chips), P2 is BB (100 chips).
+        # P0 is dealer. P1 is SB (100 chips), P2 is BB (100 chips).
         env = self._setup_hand(num_players=3, hole_cards=hole_cards, stacks=[2000, 100, 100], dealer_pos=0)
         env.deck.cards = cards(['2s', '3h', '4c', '5d', '7s'])
 

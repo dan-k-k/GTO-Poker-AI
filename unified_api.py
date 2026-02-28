@@ -172,7 +172,7 @@ def reconstruct_feature_extractor(seat_id: int, past_actions: list) -> FeatureEx
           description="Stateless endpoint. Takes a raw game state, reconstructs history, and returns the NFSP bot's optimal move.")
 def predict_optimal_action(input_data: GameStateInput):
     if not GLOBAL_MODEL_AGENT:
-        raise HTTPException(status_code=500, detail="Model not initialized")
+        raise HTTPException(status_code=500, detail="Model not initialised")
 
     try:
         current_state = convert_input_to_state(input_data)
@@ -220,7 +220,7 @@ async def get_game_state(request: Request):
         is_new_session = True
         
     if session_id not in ACTIVE_SESSIONS:
-        print(f"Initializing new game for session: {session_id}")
+        print(f"Initialising new game for session: {session_id}")
         env = TexasHoldemEnv(num_players=2)
         env.reset()
         

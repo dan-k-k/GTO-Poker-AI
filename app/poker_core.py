@@ -15,7 +15,6 @@ class Deck:
         self.reset()
     
     def reset(self):
-        """Reset deck to full 52 cards and shuffle."""
         self.cards = list(range(52))
         self.rng.shuffle(self.cards)
     
@@ -25,34 +24,29 @@ class Deck:
         self.cards = [string_to_card_id(s) for s in reversed(card_strs)]
     
     def deal(self, num_cards: int = 1) -> List[int]:
-        """Deal specified number of cards as integers."""
         if num_cards > len(self.cards):
             raise ValueError(f"Cannot deal {num_cards} cards, only {len(self.cards)} remaining")
         
         dealt = []
         for _ in range(num_cards):
             dealt.append(self.cards.pop())
-        return dealt
+        return dealt           # Multiple cards
     
     def deal_card(self) -> int:
-        """Deal a single card as integer."""
-        return self.deal(1)[0]
+        return self.deal(1)[0] # Single card
     
     def cards_remaining(self) -> int:
-        """Number of cards remaining in deck."""
         return len(self.cards)
     
     def peek_next(self, num_cards: int = 1) -> List[int]:
-        """Peek at next cards without dealing them."""
         if num_cards > len(self.cards):
             raise ValueError(f"Cannot peek {num_cards} cards, only {len(self.cards)} remaining")
-        return self.cards[-num_cards:]
+        return self.cards[-num_cards:] # Doesn't deal the card
 
 
 @dataclass
 class GameState:
-    """Centralized container for all game state variables.
-    Separates game data from game logic for cleaner architecture."""
+    """All variables: separates game data from game logic."""
     
     # Basic game configuration
     num_players: int
@@ -90,13 +84,12 @@ class GameState:
     last_raiser: Optional[int]   # Player who made last raise
     
     # Game status
-    terminal: bool               # Is hand over
+    terminal: bool               # Is hand over?
     winners: Optional[List[int]] # Winners (if terminal)
     win_reason: Optional[str]    # How hand ended
     
     def copy(self) -> 'GameState':
-        """Create a deep copy of the game state."""
-        return GameState(
+        return GameState(           # Deep copy of game state
             num_players=self.num_players,
             starting_stack=self.starting_stack,
             small_blind=self.small_blind,
@@ -126,7 +119,6 @@ class GameState:
         )
     
     def get_min_raise_amount(self) -> Optional[int]:
-        """Calculates the minimum legal raise amount for the current player."""
         player = self.to_move
         if not self.active[player] or self.stacks[player] == 0:
             return None
@@ -172,10 +164,11 @@ class HandEvaluator:
         self.evaluator = Evaluator()
 
     def best_hand_rank(self, hand: list[int], board: list[int]) -> int:
+        """Finds a player's made hand at any stage using treys' C++ evaluator"""
         if len(hand) + len(board) < 5:
             return 9999
 
-        # Convert cards to the treys format
+        # Convert to treys format
         hand_treys = [Card.new(card_to_string(c)) for c in hand]
         board_treys = [Card.new(card_to_string(c)) for c in board]
         return -self.evaluator.evaluate(board_treys, hand_treys)
@@ -193,20 +186,13 @@ class HandEvaluator:
 
 
 def get_betting_order(seat_id: int, dealer_pos: int, num_players: int) -> int:
-    """
-    Calculates a betting order where higher is better (acts later).
-    SB=0, BB=1, ..., Button=num_players-1
-    
-    This is a centralized utility function used across multiple analyzers
-    to ensure consistent betting order calculations.
-    """
     relative_position = (seat_id - dealer_pos) % num_players
     return (relative_position - 1 + num_players) % num_players
 
 # Utilities
 
 def card_to_string(card_id: int) -> str:
-    """Convert card ID (0-51) to string representation like '2s'."""
+    """(0-51) to '2s'."""
     if not (0 <= card_id <= 51):
         raise ValueError(f"Invalid card ID: {card_id}")
         
@@ -219,7 +205,7 @@ def card_to_string(card_id: int) -> str:
     return ranks[rank_id] + suits[suit_id]
 
 def string_to_card_id(card_str: str) -> int:
-    """Convert card string like '2s' to card ID (0-51)."""
+    """'2s' to (0-51)."""
     if not card_str or len(card_str) < 2:
         raise ValueError(f"Invalid card string: '{card_str}'")
 
@@ -236,7 +222,6 @@ def string_to_card_id(card_str: str) -> int:
     return rank * 4 + suit
 
 def get_street_name(stage: int) -> str:
-    """Convert stage number to street name."""
     stage_map = {0: 'preflop', 1: 'flop', 2: 'turn', 3: 'river'}
     return stage_map.get(stage, 'preflop')
 

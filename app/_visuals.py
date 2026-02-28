@@ -8,20 +8,20 @@ from app.poker_core import card_to_string, GameState
 class LayoutManager:
     def __init__(self):
         
-        # Overall Image Size
+        # Overall image size
         self.IMG_WIDTH = 600
         self.IMG_HEIGHT = 400
 
-        # Table Appearance
+        # Table appearance
         self.TABLE_BORDER_WIDTH = 50 # How thick the 'wood' border is
         self.FELT_RADIUS = 40
 
-        # Card Sizing (I've made them slightly smaller)
+        # Card sizing (I've made them slightly smaller)
         self.CARD_SCALE = 0.6 # Master scale for cards. 1.0 is default, 0.9 is 90%.
         self.CARD_WIDTH = int(90 * self.CARD_SCALE)
         self.CARD_HEIGHT = int(130 * self.CARD_SCALE)
         
-        # Font Sizing
+        # Font sizing
         self.CARD_RANK_FONT_SIZE = int(36 * self.CARD_SCALE)
         self.CARD_SUIT_FONT_SIZE = int(28 * self.CARD_SCALE)
         self.UI_FONT_SIZE = 18
@@ -31,7 +31,7 @@ class LayoutManager:
         self.COMMUNITY_CARD_SPACING = 10
         self.DEALER_BUTTON_OFFSET = 30
 
-        # Calculated Positions
+        # Calculated positions
         self.center_x, self.center_y = self.IMG_WIDTH / 2, self.IMG_HEIGHT / 2
         
         # Player 0 (Bottom)
@@ -52,7 +52,7 @@ class LayoutManager:
         self.p1_bet_pos = (self.center_x, self.p1_y - self.CARD_HEIGHT / 2 - 25)
         self.p1_dealer_pos = (self.p1_card1_x - self.DEALER_BUTTON_OFFSET, self.p1_y)
 
-        # Community Cards & Pot
+        # Community cards & pot
         self.community_y = self.center_y - self.CARD_HEIGHT / 2
         self.pot_pos = (self.center_x, self.center_y + self.CARD_HEIGHT / 2 + 15)
 

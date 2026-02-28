@@ -10,7 +10,7 @@ def cards(card_strs: list[str]) -> list[int]:
 
 class TestTexasHoldemEnv(unittest.TestCase):
     def setUp(self):
-        print(f"\n Running Test: {self.id()} ")
+        print(f"\n Running test: {self.id()} ")
         self.evaluator = HandEvaluator()
 
     def _setup_hand(self, num_players=2, hole_cards=None, community=None, stacks=None, dealer_pos=0):
@@ -62,7 +62,7 @@ class TestTexasHoldemEnv(unittest.TestCase):
         )
         return env
 
-    def test_initialization_and_blinds(self):
+    def test_initialisation_and_blinds(self):
         """Verify that a new game starts with correct stacks and blinds posted."""
         env = TexasHoldemEnv(num_players=3, starting_stack=1000, small_blind=5, big_blind=10)
         state = env.state # Use the state object directly
@@ -77,7 +77,7 @@ class TestTexasHoldemEnv(unittest.TestCase):
         self.assertEqual(state.to_move, 0, "Action should be on UTG (seat 0)")
 
     def test_preflop_betting_street_ends_correctly(self):
-        """Crucial tests for the street-ending logic, especially the BB option."""
+        """Test street-ending logic, especially the BB option."""
         # Scenario 1: Limp, BB checks. Street should end.
         env = self._setup_hand(dealer_pos=0) # P0 is dealer/SB, P1 is BB
         env.state.to_move = 0

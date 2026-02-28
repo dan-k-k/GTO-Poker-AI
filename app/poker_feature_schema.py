@@ -15,7 +15,7 @@ class BettingRoundFeatures:
 
 @dataclass
 class DynamicFeatures:
-    """Features that change with EVERY action and must be recalculated each turn."""
+    """Features that change with *every* action and must be recalculated each turn."""
     my_stack_bb: float = 0.0
     opp_stack_bb: float = 0.0
     pot_bb: float = 0.0
@@ -30,7 +30,7 @@ class DynamicFeatures:
 
 @dataclass
 class StreetFeatures:
-    """Features that are STATIC for a given street (CARD-BASED ONLY)."""
+    """Features that are static for a *given street* (CARD-BASED ONLY)."""
     random_strength: float = 0.0        # Equity vs a random hand
     made_hand_rank_pair: float = 0.0      # Is our best hand at least a pair?
     made_hand_rank_twopair: float = 0.0   # ... at least two pair?
@@ -64,7 +64,7 @@ class StreetFeatures:
 
 @dataclass
 class HandFeatures:
-    """Features that are STATIC for the entire hand, set once at the beginning."""
+    """Features that are static for the *entire hand*, set once at the beginning."""
     is_button: float = 0.0              # 1.0 if we are the button, 0.0 otherwise
     is_pair: float = 0.0
     is_suited: float = 0.0
@@ -76,11 +76,7 @@ class HandFeatures:
 
 @dataclass
 class PokerFeatureSchema:
-    """
-    The main, self-documenting schema for entire feature vector.
-    This class defines the structure, and the `to_vector` method flattens it
-    for the neural network.
-    """
+
     hand: HandFeatures = field(default_factory=HandFeatures)
     
     dynamic: DynamicFeatures = field(default_factory=DynamicFeatures)
@@ -91,23 +87,22 @@ class PokerFeatureSchema:
     turn_cards: StreetFeatures = field(default_factory=StreetFeatures)
     river_cards: StreetFeatures = field(default_factory=StreetFeatures)
     
-    # Finalized betting summary for past streets
+    # Finalised betting summary for past streets
     preflop_betting: BettingRoundFeatures = field(default_factory=BettingRoundFeatures)
     flop_betting: BettingRoundFeatures = field(default_factory=BettingRoundFeatures)
     turn_betting: BettingRoundFeatures = field(default_factory=BettingRoundFeatures)
 
     @staticmethod
     def get_vector_size() -> int:
-        """Dynamically calculates the total size of the feature vector."""
         # Create a default instance and get the length of its vector form
         return len(PokerFeatureSchema().to_vector())
     
 # -------------------------------------------------------------------------
 
     # 126 features 08/10/2025
-    # 125 features 08/02/2025 - removed intelligent equity (hand_strength) for speed.
+    # 125 features 08/02/2026 - removed intelligent equity (hand_strength) for speed.
     def to_vector(self) -> np.ndarray:
-        """Flattens the entire nested schema into a 1D NumPy array directly."""
+        """Flattens entire schema into 1D NumPy array."""
         vector_parts = [
             # HandFeatures
             self.hand.is_button,

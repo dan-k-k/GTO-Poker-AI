@@ -29,26 +29,23 @@ class TestFeaturesEdgeCases(unittest.TestCase):
         return GameState(**filtered)
 
     def test_short_stack_pot_odds(self):
-        """
-        Tests that pot odds are calculated correctly when facing a bet
-        larger than remaining stack (Effective Stack Logic).
-        """
-        print("\n Testing Short Stack / All-In Pot Odds ")
+        """Tests effective stack logic)."""
+        print("\nTesting short stack / all-in pot odds ")
         
         # Pot is 10. 
-        # Player 0 (Hero) has 20 chips left. 
-        # Player 1 (Villain) bets 100 (effectively putting Hero all-in).
-        # Total Pot becomes 110.
+        # Player 0 (hero) has 20 chips left. 
+        # Player 1 (villain) bets 100 (effectively putting hero all-in).
+        # Total pot becomes 110.
         
         # Hero can only call 20.
-        # Villain's effective bet is 20. The other 80 is "excess" returned to Villain.
-        # Effective Pot = 10 (Start) + 20 (Villain) + 20 (Hero Call) = 50.
+        # Villain's effective bet is 20. The other 80 is "excess" returned to villain.
+        # Effective pot = 10 (start) + 20 (villain) + 20 (hero call) = 50.
         # Hero pays 20 to win 50.
-        # Pot Odds = 20 / 50 = 0.40.
+        # Pot odds = 20 / 50 = 0.40.
         
         state = self._create_state(
             pot=110,                # 10 start + 100 bet
-            current_bets=[0, 100],  # Hero 0, Villain 100
+            current_bets=[0, 100],  # Hero 0, villain 100
             stacks=[20, 100],       # Hero has 20 left
             to_move=0,
             stage=1
@@ -58,17 +55,15 @@ class TestFeaturesEdgeCases(unittest.TestCase):
         self.assertAlmostEqual(schema.dynamic.pot_odds, 0.40, msg="Pot odds failed to account for stack cap")
         
         # Effective bet faced is 20. Pot before that was 10.
-        # Ratio = 20 / 30 (size of pot created by villain's effective bet) -> 0.666...
+        # Ratio = 20 / 30 (size of pot created by villain's effective bet) 
         # Or does your logic use (pot - excess)? 
         # actual_to_call / (state.pot - excess_bet)
-        # Bet faced ratio = 20 / (110 - 80) = 20 / 30 = 0.666...
+        # Bet faced ratio = 20 / (110 - 80) = 20 / 30
         self.assertAlmostEqual(schema.dynamic.bet_faced_ratio, 2/3, msg="Bet faced ratio failed effective stack logic")
 
     def test_initiative_persistence(self):
-        """
-        Tests that 'player_has_initiative' correctly tracks who raised last, even across streets.
-        """
-        print("\n Testing Initiative Persistence ")
+        """Tests that 'player_has_initiative' correctly tracks who raised last, even across streets."""
+        print("\nTesting initiative persistence ")
         
         # 1. Preflop: Hero Raises
         state_pf = self._create_state(stage=0, last_raiser=0)
@@ -80,7 +75,7 @@ class TestFeaturesEdgeCases(unittest.TestCase):
         schema_flop = self.extractor.extract_features(state_flop)
         
         self.assertEqual(schema_flop.dynamic.player_has_initiative, 1.0, 
-                         "Hero should still have initiative on Flop after Preflop raise")
+                         "Hero should still have initiative on flop after preflop raise")
         
         self.extractor.update_betting_action(0, 1, state_flop, 1)
         state_flop_checked = self._create_state(stage=1, last_raiser=None)
@@ -90,15 +85,13 @@ class TestFeaturesEdgeCases(unittest.TestCase):
         schema_turn = self.extractor.extract_features(state_turn)
         
         self.assertEqual(schema_turn.dynamic.player_has_initiative, 0.0,
-                         "Hero should lose initiative after Villain bet on Flop")
+                         "Hero should lose initiative after villain bet on flop")
 
     def test_betting_war_counters(self):
-        """
-        Tests that aggression counters (bets_opened, raises_made) count correctly during a back-and-forth raising war (4-betting).
-        """
-        print("\n Testing Betting War Counters ")
+        """Tests that aggression counters (bets_opened, raises_made) count correctly during a back-and-forth raising war (4-betting)."""
+        print("\nTesting betting war counters ")
         
-        # Flop: Villain Bets (Open), Hero Raises (Raise), Villain 3-bets (Raise), Hero 4-bets (Raise)
+        # Flop: villain bets (open), hero raises (raise), villain 3-bets (raise), hero 4-bets (raise)
         stage = 1
         s1 = self._create_state(stage=stage, last_raiser=None)
         self.extractor.update_betting_action(1, 2, s1, stage)
@@ -112,11 +105,11 @@ class TestFeaturesEdgeCases(unittest.TestCase):
         state_final = self._create_state(stage=stage, last_raiser=0)
         schema = self.extractor.extract_features(state_final)
         
-        # Normalize Clip checks ( / 10.0)
-        # Hero: 0 Opens, 2 Raises
+        # Normalise clip checks ( / 10.0)
+        # Hero: 0 opens, 2 raises
         self.assertAlmostEqual(schema.dynamic.current_betting_round.my_bets_opened, 0.0)
         self.assertAlmostEqual(schema.dynamic.current_betting_round.my_raises_made, 0.2) # 2/10
-        # Villain: 1 Open, 1 Raise (The 3-bet)
+        # Villain: 1 open, 1 raise (3-bet)
         self.assertAlmostEqual(schema.dynamic.current_betting_round.opp_bets_opened, 0.1) # 1/10
         self.assertAlmostEqual(schema.dynamic.current_betting_round.opp_raises_made, 0.1) # 1/10
         self.assertAlmostEqual(schema.dynamic.current_betting_round.actions_on_street, 0.4)

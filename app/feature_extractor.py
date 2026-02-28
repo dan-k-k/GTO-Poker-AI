@@ -10,10 +10,9 @@ from app._preflop_equity import PREFLOP_EQUITY
 
 class FeatureExtractor:
     """
-    A stateful feature extractor that populates a 3-tier schema:
-    1. HandFeatures (once per hand)
-    2. StreetFeatures (once per street)  
-    3. DynamicFeatures (on every action)
+    HandFeatures (once per hand)
+    StreetFeatures (once per street)  
+    DynamicFeatures (on every action)
     """
     VECTOR_SIZE = PokerFeatureSchema.get_vector_size()
 
@@ -37,18 +36,15 @@ class FeatureExtractor:
         self._action_counts_this_street = [0, 0, 0, 0]  # Track total actions per street
         self.last_aggressor = None  # Track who was the last aggressor
 
-    def _normalize_log(self, value, max_val):
-        """Normalizes a value using log scaling, clipped at 0."""
+    def _normalise_log(self, value, max_val):
         if value <= 0 or max_val <= 0: return 0.0
         return np.log1p(value) / np.log1p(max_val)
 
-    def _normalize_clip(self, value, max_val):
-        """Normalizes a value by clipping and dividing."""
+    def _normalise_clip(self, value, max_val):
         if max_val == 0: return 0.0
         return min(value, max_val) / max_val
 
     def new_hand(self):
-        """Resets the schema for a new hand."""
         self.schema = PokerFeatureSchema()
         self._hand_features_extracted = False
         self._street_features_extracted = [False, False, False, False]  # Reset street cache
@@ -62,8 +58,7 @@ class FeatureExtractor:
         self.last_aggressor = None
 
     def extract_features(self, state: GameState, skip_random_equity: bool = False) -> PokerFeatureSchema:
-        """Main extraction method. Populates the clean schema with both historical and real-time data."""
-        # Hand-Static features
+        # Hand-static features
         if not self._hand_features_extracted:
             self._extract_hand_features(state)
             self._hand_features_extracted = True
@@ -82,11 +77,11 @@ class FeatureExtractor:
                 self._street_features_extracted[stage] = True
             
             # Finalised betting history from internal tracker
-            betting_history_schema.my_bets_opened = self._normalize_clip(self._betting_history['my_bets_opened'][stage], 10.0)
-            betting_history_schema.my_raises_made = self._normalize_clip(self._betting_history['my_raises_made'][stage], 10.0)
-            betting_history_schema.opp_bets_opened = self._normalize_clip(self._betting_history['opp_bets_opened'][stage], 10.0)
-            betting_history_schema.opp_raises_made = self._normalize_clip(self._betting_history['opp_raises_made'][stage], 10.0)
-            betting_history_schema.actions_on_street = self._normalize_clip(self._action_counts_this_street[stage], 10.0)
+            betting_history_schema.my_bets_opened = self._normalise_clip(self._betting_history['my_bets_opened'][stage], 10.0)
+            betting_history_schema.my_raises_made = self._normalise_clip(self._betting_history['my_raises_made'][stage], 10.0)
+            betting_history_schema.opp_bets_opened = self._normalise_clip(self._betting_history['opp_bets_opened'][stage], 10.0)
+            betting_history_schema.opp_raises_made = self._normalise_clip(self._betting_history['opp_raises_made'][stage], 10.0)
+            betting_history_schema.actions_on_street = self._normalise_clip(self._action_counts_this_street[stage], 10.0)
 
         # Static features for the current street
         current_street_cards_schema = self._get_street_cards_schema(current_stage)
@@ -101,7 +96,7 @@ class FeatureExtractor:
         return self.schema
 
     def _extract_hand_features(self, state: GameState):
-        """Populates the `hand` part of the schema. Called only once per hand."""
+        """Called only once per hand."""
         self.schema.hand.is_button = 1.0 if self.seat_id == state.dealer_pos else 0.0
         hole = state.hole_cards[self.seat_id]
         if len(hole) == 2:
@@ -113,7 +108,7 @@ class FeatureExtractor:
             self.schema.hand.low_card_rank = ranks[0] / 12.0
 
     def _update_dynamic_features(self, state: GameState):
-        """Populates the `dynamic` part of the schema. Called on every action."""
+        """Called on every action."""
         dyn_schema = self.schema.dynamic
         bb_size = state.big_blind if state.big_blind > 0 else 1
         
@@ -126,27 +121,27 @@ class FeatureExtractor:
         pot_bb_raw = state.pot / bb_size
         effective_stack_bb_raw = min(my_stack_bb_raw, opp_stack_bb_raw)
         
-        dyn_schema.my_stack_bb = self._normalize_log(my_stack_bb_raw, STARTING_STACK_BB)
-        dyn_schema.opp_stack_bb = self._normalize_log(opp_stack_bb_raw, STARTING_STACK_BB)
-        dyn_schema.pot_bb = self._normalize_log(pot_bb_raw, MAX_POT_BB)
-        dyn_schema.effective_stack_bb = self._normalize_log(effective_stack_bb_raw, STARTING_STACK_BB)
+        dyn_schema.my_stack_bb = self._normalise_log(my_stack_bb_raw, STARTING_STACK_BB)
+        dyn_schema.opp_stack_bb = self._normalise_log(opp_stack_bb_raw, STARTING_STACK_BB)
+        dyn_schema.pot_bb = self._normalise_log(pot_bb_raw, MAX_POT_BB)
+        dyn_schema.effective_stack_bb = self._normalise_log(effective_stack_bb_raw, STARTING_STACK_BB)
 
         # Current round
         stage = state.stage
-        dyn_schema.current_betting_round.my_bets_opened = self._normalize_clip(self._betting_history['my_bets_opened'][stage], 10.0)
-        dyn_schema.current_betting_round.my_raises_made = self._normalize_clip(self._betting_history['my_raises_made'][stage], 10.0)
-        dyn_schema.current_betting_round.opp_bets_opened = self._normalize_clip(self._betting_history['opp_bets_opened'][stage], 10.0)
-        dyn_schema.current_betting_round.opp_raises_made = self._normalize_clip(self._betting_history['opp_raises_made'][stage], 10.0)
-        dyn_schema.current_betting_round.actions_on_street = self._normalize_clip(self._action_counts_this_street[stage], 10.0)
+        dyn_schema.current_betting_round.my_bets_opened = self._normalise_clip(self._betting_history['my_bets_opened'][stage], 10.0)
+        dyn_schema.current_betting_round.my_raises_made = self._normalise_clip(self._betting_history['my_raises_made'][stage], 10.0)
+        dyn_schema.current_betting_round.opp_bets_opened = self._normalise_clip(self._betting_history['opp_bets_opened'][stage], 10.0)
+        dyn_schema.current_betting_round.opp_raises_made = self._normalise_clip(self._betting_history['opp_raises_made'][stage], 10.0)
+        dyn_schema.current_betting_round.actions_on_street = self._normalise_clip(self._action_counts_this_street[stage], 10.0)
         
-        # In heads-up, pre-flop, the BB is considered the initial aggressor before any action.
+        # In HU pre-flop, the BB is considered the initial aggressor before any action.
         initial_aggressor = state.bb_pos if self.last_aggressor is None and state.stage == 0 else self.last_aggressor
         if initial_aggressor is not None:
             dyn_schema.player_has_initiative = 1.0 if self.seat_id == initial_aggressor else 0.0
         else:
             dyn_schema.player_has_initiative = 0.0
         
-        # Pot Odds
+        # Pot odds
         raw_to_call = max(state.current_bets) - state.current_bets[self.seat_id]
         my_remaining_stack = state.stacks[self.seat_id]
         actual_to_call = min(raw_to_call, my_remaining_stack)
@@ -160,7 +155,7 @@ class FeatureExtractor:
             final_effective_pot = effective_pot_now + actual_to_call
             
             if final_effective_pot > 0:
-                # Break-Even Equity % needed to call
+                # Break-even equity % needed to call
                 dyn_schema.pot_odds = actual_to_call / final_effective_pot
             
             # Bet faced ratio
@@ -175,12 +170,12 @@ class FeatureExtractor:
         if state.stage > 0 and state.pot > 0:
             effective_stack = min(state.stacks[self.seat_id], state.stacks[1 - self.seat_id])
             spr = effective_stack / state.pot
-            dyn_schema.spr = self._normalize_clip(spr, 20.0)  # Clip SPR at 20 and scale
+            dyn_schema.spr = self._normalise_clip(spr, 20.0)  # Clip SPR at 20 and scale
         else:
             dyn_schema.spr = 0.0
 
     def _extract_static_street_features(self, state: GameState, street_schema: StreetFeatures, stage: int, skip_random_equity: bool = False):
-        """Populate the STATIC features for ANY street schema. Called ONCE per street."""
+        """Called once per street."""
         hole = state.hole_cards[self.seat_id]
 
         cards_on_street = {0: 0, 1: 3, 2: 4, 3: 5}
@@ -265,15 +260,15 @@ class FeatureExtractor:
 
             if hole_suits.count(draw_suit) == 1:
                 
-                # IMMEDIATE draw blocker
+                # Immediate draw blocker
                 if max_suit_count == 3:
                     street_schema.has_flush_blocker = 1.0
                 
-                # BACKDOOR draw blocker
+                # Backdoor draw blocker
                 elif max_suit_count == 2:
                     street_schema.has_flush_blocker = 0.5
         
-        ## Straight Blockers
+        ## Straight blockers
         street_schema.straight_blocker_value = 0.0
 
         # Check for actual straight
@@ -323,10 +318,10 @@ class FeatureExtractor:
         raw_rank = -self.evaluator.best_hand_rank(hole, community)
 
         hand_class = self.evaluator.evaluator.get_rank_class(raw_rank)
-        if hand_class == 1: # Straight Flush
+        if hand_class == 1: # Straight flush
             setattr(street_schema, f"{prefix}straight", 1.0)
             setattr(street_schema, f"{prefix}flush", 1.0)
-        elif hand_class == 3: # Full House
+        elif hand_class == 3: # Full house
             setattr(street_schema, f"{prefix}fullhouse", 1.0)
         elif hand_class == 4: # Flush
             setattr(street_schema, f"{prefix}flush", 1.0)
@@ -334,21 +329,19 @@ class FeatureExtractor:
             setattr(street_schema, f"{prefix}straight", 1.0)
 
     def _get_straight_draw_qualities(self, cards: list) -> tuple:
-        """Analyzes cards to find the quality of the best 3 and 4-card straight draws.
-        Quality: 1.0 for consecutive (strong), 0.5 for gapped (weaker).
-        Returns a tuple: (three_card_draw_quality, four_card_draw_quality"""
+        """Returns three_card_draw_quality, four_card_draw_quality"""
         ranks = sorted(list(set([c // 4 for c in cards])))
-        if 12 in ranks: ranks.insert(0, -1) # Handle Ace-low
+        if 12 in ranks: ranks.insert(0, -1) # Handle ace-low
 
         three_card_quality = 0.0
         four_card_quality = 0.0
 
-        # 4-card draws: OESD vs Gutshot
+        # 4-card draws: OESD vs gutshot
         if len(ranks) >= 4:
             for i in range(len(ranks) - 3):
                 four_ranks = ranks[i:i+4]
                 span = four_ranks[3] - four_ranks[0]
-                if span == 3: # e.g., 5,6,7,8 -> span is 3. Open-ended.
+                if span == 3: # e.g., 5,6,7,8 -> span is 3. open-ended.
                     four_card_quality = 1.0
                     break # Found the best possible 4-card draw
                 elif span == 4: # e.g., 5,6,8,9 -> span is 4. Gutshot.
@@ -368,12 +361,7 @@ class FeatureExtractor:
         return three_card_quality, four_card_quality
 
     def _find_best_board_straight_draw(self, community_cards: list) -> tuple:
-        """
-        Analyzes community cards to find the best possible straight draw.
-        Returns: (draw_type, completing_ranks)
-        - draw_type: 'OESD', 'gutshot', or None
-        - completing_ranks: A list of card ranks that would complete the draw.
-        """
+        """Returns: (draw_type, completing_ranks)"""
         if len(community_cards) < 3:
             return None, []
 
@@ -444,7 +432,6 @@ class FeatureExtractor:
         return wins / trials if trials > 0 else 0.5
     
     def _get_preflop_equity_key(self, hole_cards: list) -> str:
-        """Converts two integer hole cards into a standardized string key for equity lookup."""
         ranks_map = {0: '2', 1: '3', 2: '4', 3: '5', 4: '6', 5: '7', 6: '8', 7: '9', 8: 'T', 9: 'J', 10: 'Q', 11: 'K', 12: 'A'}
         
         ranks = sorted([c // 4 for c in hole_cards], reverse=True)
@@ -460,7 +447,7 @@ class FeatureExtractor:
         return f"{rank1_char}{rank2_char}{is_suited}" # e.g., "AKs" or "T8o"
 
     def _get_preflop_strength(self, hole_cards):
-        """Looks up the pre-computed equity for the given hole cards."""
+        """Looks up the pre-computed equity."""
         if not hole_cards or len(hole_cards) < 2:
             return 0.0
         key = self._get_preflop_equity_key(hole_cards)

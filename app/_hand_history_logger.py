@@ -55,17 +55,17 @@ class HandHistoryLogger:
         self.current_hand_actions.append({'player': player_id, 'action_type': action, 'street': state_before.stage, 'policy': policy_name, 'entropy': entropy_val})
         if not self.verbose: return
         
-        # Hand Rank Logic
+        # Hand rank logic
         p_name = f"P{player_id}"
         hole = self._format_cards(state_before.hole_cards[player_id])
         if not state_before.community:
             r1, r2 = state_before.hole_cards[player_id][0] // 4, state_before.hole_cards[player_id][1] // 4
-            hand_name = "Pair" if r1 == r2 else "High Card"
+            hand_name = "Pair" if r1 == r2 else "High card"
         else:
             rank = self.evaluator.best_hand_rank(state_before.hole_cards[player_id], state_before.community)
             hand_name = self.evaluator.get_rank_string(rank)
 
-        # Feature String
+        # Feature string
         feat_str = ""
         if features_schema:            
             stage_map = {0: features_schema.preflop_cards, 1: features_schema.flop_cards, 2: features_schema.turn_cards, 3: features_schema.river_cards}
@@ -76,7 +76,7 @@ class HandHistoryLogger:
             if 'action_probs' in predictions: 
                 probs_str = self._format_probs(predictions['action_probs'])
             
-            # NFSP (DQN) uses 'q_values', Actor-Critic uses 'state_values'
+            # NFSP (DQN) uses 'q_values', Actor-critic uses 'state_values'
             if 'q_values' in predictions:
                 e_rew_str = f"{predictions['q_values'].max().item():+.4f}"
             elif 'state_values' in predictions:
@@ -85,7 +85,7 @@ class HandHistoryLogger:
         stack_bb = state_before.stacks[player_id] / state_before.big_blind 
         self.logger.info(f"    [{p_name}({policy_name}): {' '.join(hole)} ({hand_name}) | {feat_str}P:[{probs_str}] | xRew:{e_rew_str} | Stack: {stack_bb:.1f}BB]")
 
-        # Action String
+        # Action string
         cur_bets = state_before.current_bets
         if action == 0: act_str = f"  {p_name} folds."
         elif action == 1: act_str = f"  {p_name} calls." if max(cur_bets) > cur_bets[player_id] else f"  {p_name} checks."
@@ -99,7 +99,7 @@ class HandHistoryLogger:
 
     def log_end_hand(self, episode_rewards, state):
         if self.verbose:
-            self.logger.info(f"- PROFIT: {episode_rewards[0]} chips (Rew: {episode_rewards[0]/state.big_blind:+.4f})\n")
+            self.logger.info(f"- PROFIT: {episode_rewards[0]} chips (Reward: {episode_rewards[0]/state.big_blind:+.4f})\n")
         return {'actions': self.current_hand_actions, 'rewards': episode_rewards}
 
     def log_feature_dump_if_needed(self, state, schema, predictions):

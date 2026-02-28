@@ -9,8 +9,8 @@ from app.feature_extractor import FeatureExtractor
 from app.poker_core import GameState
 from app.poker_feature_schema import PokerFeatureSchema
 
-# Action indices map to (Action Type, Bet Size as % of Pot)
-# FOLD=0, CALL=1, RAISE=2. For RAISE, -1 signifies All-in.
+# Action indices map to (action type, bet size as a % of pot)
+# FOLD=0, CALL=1, RAISE=2. For RAISE, -1 = All-in.
 ACTION_MAP = [
     (0, 0),      # Fold
     (1, 0),      # Check/call
@@ -21,11 +21,7 @@ ACTION_MAP = [
 NUM_ACTIONS = len(ACTION_MAP)
 
 class BRNet(nn.Module):
-    """
-    Dueling Double DQN poker network architecture.
-    Combines Dueling DQN (separate value/advantage streams) with Double DQN (action selection/evaluation).
-    Used by both training and inference.
-    """
+    """Dueling DQN (separate value/advantage streams), Double DQN (action selection/evaluation). Used by both training and inference."""
     def __init__(self, input_size: int = None):  # Dynamic input size from schema
         super().__init__()
         
@@ -66,19 +62,19 @@ class BRNet(nn.Module):
             'action_logits': q_values,  # Q-values serve as action logits
             'action_probs': torch.softmax(q_values, dim=-1),
             'state_values': state_values,  # Return the raw state values
-            'q_values': q_values  # Explicit Q-values for Double DQN
+            'q_values': q_values  # Explicit q values for double DQN
         }
     
     def compute_double_dqn_target(self, next_states, rewards, dones, target_network, gamma, next_legal_masks):
         with torch.no_grad():
-            # Select Best LEGAL Action
+            # Select best legal action
             next_q_values_main = self.forward(next_states)['q_values']
             masked_q_main = next_q_values_main.clone()
             masked_q_main[~next_legal_masks] = -float('inf')
             
             next_actions = torch.argmax(masked_q_main, dim=1)
             
-            # Target Net evaluation
+            # Target net evaluation
             next_q_values_target = target_network.forward(next_states)['q_values']
             next_q_values = next_q_values_target.gather(1, next_actions.unsqueeze(1)).squeeze(1)
             
@@ -87,7 +83,7 @@ class BRNet(nn.Module):
         return targets
 
 class ASNet(nn.Module):
-    """Standard Feed-Forward Network for Classification (Supervised Learning)."""
+    """Feed-Forward Network for classification (Supervised Learning)."""
     def __init__(self, input_size: int = None):
         super().__init__()
         
@@ -164,12 +160,12 @@ class NeuralNetworkAgent(PokerAgent):
         legal_action_mask = self._get_legal_action_mask(state)
         
         if not np.any(legal_action_mask):
-            raise RuntimeError("Error: No legal actions found for Player {self.seat_id}.")
+            raise RuntimeError("Error: No legal actions found for player {self.seat_id}.")
 
         action_index = 0
         is_random_exploration = False
 
-        # Best Response (Greedy + Epsilon)
+        # Best Response (greedy + epsilon)
         if use_greedy:
             if random.random() < epsilon:
                 
@@ -212,7 +208,7 @@ class NeuralNetworkAgent(PokerAgent):
                 masked_q_values[~legal_action_mask] = -float('inf')
                 action_index = np.argmax(masked_q_values)
 
-        # Average Strategy (Softmax Sampling)
+        # Average Strategy (softmax sampling)
         else:
             filtered_probs = action_probs * legal_action_mask
             prob_sum = np.sum(filtered_probs)
@@ -220,7 +216,7 @@ class NeuralNetworkAgent(PokerAgent):
             if prob_sum > 0:
                 filtered_probs /= prob_sum
             else:
-                # If network predicts 0 probability for all legal moves, uniform sample legal ones
+                # If the network predicts 0 probability for all legal moves, uniform sample legal ones
                 filtered_probs = legal_action_mask.astype(float) / np.sum(legal_action_mask)
                 
             action_index = np.random.choice(NUM_ACTIONS, p=filtered_probs)
@@ -332,6 +328,6 @@ class RandomBot(PokerAgent):
         # If only raising was legal but chose not to, bot must go all-in
         return 2, state.stacks[self.seat_id], None, "Random", None
 
-# Backward compatibility alias
+# Backward compatibility
 NeuralPokerAgent = GTOAgent 
 

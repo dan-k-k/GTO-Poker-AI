@@ -77,16 +77,16 @@ class NFSPTrainer:
             agent = agents[player_idx]
             state_before = state.copy()
 
-            # Compute Action
+            # Compute action
             action, amount, preds, policy, schema = agent.compute_action(state)
 
-            # Logging (Only if logger is provided)
+            # Logging (Only if logger, verbose is true)
             if logger:
                 logger.log_action(player_idx, action, amount, state_before, preds, policy, schema)
                 if schema:
                     logger.log_feature_dump_if_needed(state_before, schema, preds)
 
-            # Step Environment
+            # Step 
             next_state, done = env.step(action, amount)
 
             # Observations (for NFSP internal state tracking)
@@ -98,7 +98,7 @@ class NFSPTrainer:
 
             state = next_state
 
-        # End of Hand; Showdown
+        # End of hand; showdown
         final_stacks = state.stacks
         rewards = [final_stacks[i] - initial_stacks[i] for i in range(len(agents))]
 
@@ -107,7 +107,7 @@ class NFSPTrainer:
             'stacks_after': {i: final_stacks[i] for i in range(len(final_stacks))}
         }
 
-        # Trigger the final RL buffer push
+        # Trigger final RL buffer push
         for agent in agents:
             agent.observe_showdown(showdown_data)
 
@@ -123,16 +123,16 @@ class NFSPTrainer:
             self.stats['buffer_sizes_sl'][i].append(len(self.agents[i].sl_buffer))
                 
     def train(self):
-        """Main training loop with Resume and Interrupt handling."""
-        print("Starting NFSP Training...")
-        print(f"Total Target Episodes: {self.num_episodes:,}")
+        """Main training loop with handling of interruption and resumption."""
+        print("Starting NFSP training...")
+        print(f"Total target episodes: {self.num_episodes:,}")
         
         start_episode = self.hand_counter
         if start_episode >= self.num_episodes:
             print(f"Training already completed ({start_episode:,}/{self.num_episodes:,}).")
             return
 
-        print(f"Resuming from Episode {start_episode:,}...")
+        print(f"Resuming from episode {start_episode:,}...")
         session_start_time = time.time()
         completed_normally = False
 
@@ -165,7 +165,7 @@ class NFSPTrainer:
             completed_normally = True
 
         except KeyboardInterrupt:
-            print(f"\nTraining interrupted at Episode {self.hand_counter}!")
+            print(f"\nTraining interrupted at episode {self.hand_counter}!")
             # Graceful save ONLY on manual interrupt
             self._perform_save(session_start_time, self.hand_counter)
         
@@ -179,7 +179,7 @@ class NFSPTrainer:
         self.stats['training_time'] = total_seconds
         
         time_str = str(datetime.timedelta(seconds=int(total_seconds)))
-        print(f"\n[Saving] Episode {episode} | Total Time: {time_str}")
+        print(f"\n[Saving] Episode {episode} | Total time: {time_str}")
         
         self._save_models(episode, suffix="_latest")
         self._save_buffers()
@@ -206,11 +206,11 @@ class NFSPTrainer:
         win_rate = wins / eval_episodes
         bb_per_100 = (avg_reward / bb_size) * 100
 
-        print(f"Eval Episode {episode} vs RandomBot | Win Rate: {win_rate:.2%} | Avg Profit: {avg_reward:.2f} | Strength: {bb_per_100:.2f} bb/100")
+        print(f"Eval Episode {episode} vs RandomBot | Win rate: {win_rate:.2%} | Avg profit: {avg_reward:.2f} | Strength: {bb_per_100:.2f} bb/100")
         if avg_reward > self.best_avg_reward:
-            print(f"New Best Performance found! (Avg Profit: {avg_reward:.2f} > Previous: {self.best_avg_reward:.2f})")
+            print(f"New best performance found! (Avg profit: {avg_reward:.2f} > previous: {self.best_avg_reward:.2f})")
             self.best_avg_reward = avg_reward
-            self._save_models(episode, suffix="_best") # A better eval method is by tracking play %s against GTO
+            self._save_models(episode, suffix="_best") # A better eval method would be to track play %s against GTO
             
         agent_to_eval.set_mode('train')
 
@@ -235,9 +235,9 @@ class NFSPTrainer:
                 os.remove(state_path)
             os.rename(temp_path, state_path)
             
-            print(f"Training state saved. (Hand {self.hand_counter})")
+            print(f"Training state saved (hand {self.hand_counter})")
         except Exception as e:
-            print(f"CRITICAL ERROR SAVING STATE: {e}")
+            print(f"Critical error saving state: {e}")
 
     def _load_state(self):
         """Loads the last training metadata and restores stats."""
@@ -258,7 +258,7 @@ class NFSPTrainer:
                 except KeyError as e:
                     raise KeyError(f"Corrupt training_state.json: Missing key {e}. Cannot restore training history.")
                     
-            print(f"Resuming from Hand {self.hand_counter} (Best Reward: {self.best_avg_reward})")
+            print(f"Resuming from hand {self.hand_counter} (best reward: {self.best_avg_reward})")
         else:
             model_dir = os.path.join(self.output_dir, "models")
             buffer_dir = os.path.join(self.output_dir, "buffers")
@@ -271,7 +271,7 @@ class NFSPTrainer:
                     "Refusing to silently restart and overwrite data. "
                     "Clear the directory to start fresh or restore the state file.")
 
-            print("No previous training state or data found. Starting from Episode 0.")
+            print("No previous training state or data found. Starting from episode 0.")
             self.hand_counter = 0
             self.best_avg_reward = -float('inf')
 
@@ -307,7 +307,7 @@ class NFSPTrainer:
         save_dir = os.path.join(self.output_dir, "models")
         
         if self.hand_counter > 0 and not os.path.isdir(save_dir):
-            raise FileNotFoundError(f"Training state indicates Episode {self.hand_counter}, but no model directory found at {save_dir}.")
+            raise FileNotFoundError(f"Training state indicates episode {self.hand_counter}, but no model directory found at {save_dir}.")
 
         print(f"Attempting to load models with suffix '{suffix}'...")
         
@@ -321,7 +321,7 @@ class NFSPTrainer:
                     if os.path.exists(br_path) or os.path.exists(as_path):
                         raise FileExistsError(f"Partial model files found at {br_path} but expected fresh start. Check directory.")
                     
-                    print("No existing models found for Episode 0. Starting fresh.")
+                    print("No existing models found for episode 0. Starting fresh.")
                     return
                 else:
                     raise FileNotFoundError(f"Missing model file: {br_path}. Cannot resume training.")
@@ -329,7 +329,7 @@ class NFSPTrainer:
         print("Models loaded successfully.")
     
     def _save_models(self, episode: int, suffix: str):
-        """Save agent models with a specific suffix (e.g., '_best', '_latest')."""
+        """Save agent models with ('_best', '_latest')."""
         save_dir = os.path.join(self.output_dir, "models")
         os.makedirs(save_dir, exist_ok=True)
 
@@ -343,7 +343,7 @@ def main(config_path: str = "config.yaml"):
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
         
-    print(" Configuration Loaded ")
+    print("Configuration loaded ")
     print(json.dumps(config, indent=2))
 
     trainer = NFSPTrainer(config=config)

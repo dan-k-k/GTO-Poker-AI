@@ -1,15 +1,12 @@
 # app/TexasHoldemEnv.py
-# Poker environment using GameState and centralized HandEvaluator
+# Poker environment using GameState and centralised HandEvaluator
 
 from typing import List, Optional, Dict
 from app.poker_core import GameState, Deck, HandEvaluator
 from dataclasses import asdict
 
 class TexasHoldemEnv:
-    """Clean poker game environment focused purely on game logic.
-    Currently intended for Heads-up only.
-    AI-specific tracking moved to FeatureExtractor.
-    Uses GameState from poker_core."""
+    """Game logic. Currently intended for Heads-up only. Works with GameState (nfsp_components.py)"""
 
     def __init__(self, num_players=2, starting_stack=200, small_blind=1, big_blind=2, seed=None):
         assert 2 <= num_players <= 9
@@ -25,20 +22,17 @@ class TexasHoldemEnv:
 
 
     def reset(self):
-        """Resets the environment. If the tournament is over or hasn't started,
-        it begins a new tournament. Otherwise, it just starts the next hand."""
         if self.state is None or self.state.win_reason == 'tournament_winner':
             return self._start_new_tournament()
         else:
             return self._start_new_hand(preserve_stacks=True)
     
     def _start_new_tournament(self) -> GameState:
-        """Sets up initial stacks for all players and starts the first hand."""
         initial_stacks = [self.starting_stack] * self.num_players
         return self._start_new_hand(preserve_stacks=False, existing_stacks=initial_stacks)
     
     def _start_new_hand(self, preserve_stacks: bool, existing_stacks: Optional[List[int]] = None) -> GameState:
-        """Resets the game state for the start of a new hand."""
+        """Resets game state for new hand."""
         if preserve_stacks:
             stacks = self.state.stacks.copy()
             surviving_players = [p for p, s in enumerate(stacks) if s > 0]
@@ -53,8 +47,7 @@ class TexasHoldemEnv:
             stacks = existing_stacks if existing_stacks else [self.starting_stack] * self.num_players
             surviving_players = list(range(self.num_players))
 
-        # Reset deck & shuffle
-        self.deck.reset()
+        self.deck.reset() # Shuffles
 
         # Deal hole cards
         hole_cards = []
@@ -62,19 +55,19 @@ class TexasHoldemEnv:
             player_cards = self.deck.deal(2)
             hole_cards.append(player_cards)
 
-        # Advance dealer button (clockwise to next surviving player)
+        # Advance dealer button
         if not hasattr(self, 'state') or self.state is None:
             dealer_pos = surviving_players[0]
         else:
-            # Find next surviving player clockwise from current dealer
-            current_dealer = self.state.dealer_pos
-            next_dealer = (current_dealer + 1) % self.num_players
+            # Next surviving player
+            current = self.state.dealer_pos
+            next = (current + 1) % self.num_players
 
             # Advance clockwise until we find a surviving player
-            while next_dealer not in surviving_players:
-                next_dealer = (next_dealer + 1) % self.num_players
+            while next not in surviving_players:
+                next = (next + 1) % self.num_players
 
-            dealer_pos = next_dealer
+            dealer_pos = next
 
         # Calculate positions (only among surviving players)
         if len(surviving_players) == 2:
@@ -89,7 +82,7 @@ class TexasHoldemEnv:
             bb_idx = (dealer_idx + 2) % len(surviving_players)
             sb_pos = surviving_players[sb_idx]
             bb_pos = surviving_players[bb_idx]
-        # Store starting stacks before blinds are posted
+
         initial_stacks = stacks.copy()
 
         # Post blinds
@@ -105,7 +98,7 @@ class TexasHoldemEnv:
 
         pot = sb_amount + bb_amount
 
-        # Determine first to act (only among surviving players)
+        # Determine first to act
         if len(surviving_players) == 2:
             to_move = sb_pos # SB acts first in heads-up
         else:
@@ -157,27 +150,27 @@ class TexasHoldemEnv:
         return self.state
 
     def step(self, action, amount=None):
-        """Execute an action and advance game state."""
+        """Execute an action. Advance game state."""
         if self.state.terminal:raise ValueError("Cannot step in a terminal state.")
-        if self.state is None:raise ValueError("Game state not initialized")
+        if self.state is None:raise ValueError("Game state not initialised")
 
         player = self.state.to_move
         current_max = max(self.state.current_bets)
     
         # Execute action
-        if action == 0: # FOLD
+        if action == 0:     # FOLD
             self.state.active[player] = False
-        elif action == 1: # CHECK/CALL
+        elif action == 1:   # CHECK/CALL
             to_call = current_max - self.state.current_bets[player]
             if to_call > 0:
                 call_amt = min(to_call, self.state.stacks[player])
                 self.state.stacks[player] -= call_amt
                 self.state.current_bets[player] += call_amt
                 self.state.pot += call_amt
-        else: # BET/RAISE
+        else:               # BET/RAISE
             is_all_in_bet = (amount == self.state.stacks[player])
             
-            # An all-in is always a legal action, even if it's less than a full min-raise.
+            # An all-in is always a legal action
             if not is_all_in_bet:
                 required = self.state.get_min_raise_amount()
                 # Prevent illegal under-raises
@@ -277,7 +270,7 @@ class TexasHoldemEnv:
 
         self.state.starting_pot_this_round = self.state.pot
         
-        # Set first to act (dealer acts last post-flop, only among surviving players)
+        # Set first to act (dealer acts last post-flop if active)
         active_survivors = [p for p in self.state.surviving_players if self.state.active[p] and not self.state.all_in[p]]
         if active_survivors:
             self.state.to_move = self._next_active_player(self.state.dealer_pos)
@@ -285,7 +278,6 @@ class TexasHoldemEnv:
         return self.state, False
 
     def _is_street_over(self) -> bool:
-        """Check if the current betting street is complete."""
         active_players = [p for p in self.state.surviving_players if self.state.active[p]]
         if len(active_players) <= 1: return True
 
@@ -312,14 +304,12 @@ class TexasHoldemEnv:
         return all_acted and bets_match
 
     def _should_auto_complete(self):
-        """Check if hand should auto-complete due to all-in situation."""
         active_survivors = [p for p in self.state.surviving_players if self.state.active[p]]
         # Auto-complete if 1 or 0 players can still make actions
         can_act_count = sum(1 for p in active_survivors if not self.state.all_in[p])
         return can_act_count <= 1
 
     def _next_active_player(self, current_player):
-        """Find next active player who can act (clockwise, only among surviving players)."""
         if not self.state.surviving_players:
             return -1 # No one left
         
@@ -345,7 +335,7 @@ class TexasHoldemEnv:
 
 
     def _finish_hand_all_in(self):
-        """Complete hand when all players are all-in or folded."""
+        """All players are all-in or folded."""
         # Deal remaining community cards
         while self.state.stage < 3:
             self.state.stage += 1
@@ -361,7 +351,7 @@ class TexasHoldemEnv:
         return self.state, True
 
     def _calculate_showdown_hand_ranks(self):
-        """Calculate hand ranks for all active players at showdown."""
+        """For all active players at showdown."""
         hand_ranks = {}
         for p in self.state.surviving_players:
             if not self.state.active[p]:
@@ -370,7 +360,6 @@ class TexasHoldemEnv:
         return hand_ranks
 
     def _determine_showdown_winner(self, hand_ranks=None):
-        """Determine winner(s) at showdown using pre-calculated hand ranks."""
         if hand_ranks is None:
             hand_ranks = self._calculate_showdown_hand_ranks()
         if not hand_ranks:
@@ -380,7 +369,6 @@ class TexasHoldemEnv:
         return winners
 
     def _handle_showdown(self, from_all_in: bool = False):
-        """Centralized method to process a showdown."""
         self.state.terminal = True
 
         hand_ranks = self._calculate_showdown_hand_ranks()
@@ -393,8 +381,6 @@ class TexasHoldemEnv:
             self.state.win_reason = 'all_in_showdown' if from_all_in else 'showdown'
 
     def _check_tournament_winner(self) -> bool: 
-        """Check if any players went bust and declare tournament winner if only 1 remains.
-        Returns True if a tournament winner was found, False otherwise."""
         # Update surviving players list - remove anyone with 0 chips
         self.state.surviving_players = [p for p in self.state.surviving_players if self.state.stacks[p] > 0]
 
@@ -406,7 +392,7 @@ class TexasHoldemEnv:
             self.state.win_reason = 'tournament_winner'
             return True 
         elif len(self.state.surviving_players) == 0:
-            # This case handles a scenario where multiple players bust simultaneously leaving no winner
+            # If multiple players bust simultaneously leaving no winner (but shouldn't ever happen)
             self.state.terminal = True
             self.state.winners = []
             self.state.win_reason = 'no_survivors'
@@ -415,34 +401,27 @@ class TexasHoldemEnv:
         return False 
 
     def _distribute_pot_with_side_pots(self, hand_ranks=None):
-        """Handles complex pot distribution for showdowns heads up.
-        This method creates and awards the main pot and side pot heads up."""
         if hand_ranks is None:
             hand_ranks = self._calculate_showdown_hand_ranks()
         state = self.state
 
-        # Get players involved in the showdown
+        # Get players involved in showdown
         showdown_players = [p for p in state.surviving_players if state.active[p] and p in hand_ranks]
         if not showdown_players:
-            return # No one to award pot to
+            return # No one to award pot to (but shouldn't happen)
 
-        # Calculate each player's total investment for the hand
         investments = {p: state.starting_stacks_this_hand[p] - state.stacks[p] for p in showdown_players}
-
         if all(v == 0 for v in investments.values()):
             return
 
-        # Create a sorted list of unique investment amounts
         sorted_investments = sorted(list(set(investments.values())))
-        
         last_investment_level = 0
         
-        # Iterate through each investment level to create and award pots
         for investment_level in sorted_investments:
             # Determine the pot amount for this specific level (side pot)
-            pot_increment = investment_level - last_investment_level
-            
             # Find all players who contributed to this pot (i.e., invested at least this much)
+            # Find the winner(s) among the eligible players for this pot
+            pot_increment = investment_level - last_investment_level
             eligible_players = [p for p in showdown_players if investments[p] >= investment_level]
             
             if not eligible_players:
@@ -451,21 +430,19 @@ class TexasHoldemEnv:
             # Calculate the size of this pot
             current_pot_size = pot_increment * len(eligible_players)
             
-            # Find the winner(s) among the eligible players for this pot
             best_rank_in_pot = None  # Use None instead of -1
             winners = []
             for p in eligible_players:
                 rank = hand_ranks.get(p)
                 if rank is None:
                     continue
-                # Compare tuple to tuple (or handle the first player)
                 if best_rank_in_pot is None or rank > best_rank_in_pot:
                     best_rank_in_pot = rank
                     winners = [p]
                 elif rank == best_rank_in_pot:
                     winners.append(p)
             
-            # Distribute this pot to the winner(s)
+            # Distribute this side/main pot to the winner(s)
             if winners:
                 share = current_pot_size // len(winners)
                 remainder = current_pot_size % len(winners)
@@ -476,7 +453,7 @@ class TexasHoldemEnv:
             
             last_investment_level = investment_level
 
-        state.pot = 0 # All money has been distributed
+        state.pot = 0 # All money distributed
 
     # Legacy compatibility methods
     @property
@@ -500,10 +477,7 @@ class TexasHoldemEnv:
         self._num_players = value
 
     def get_state_dict(self) -> Dict:
-        """
-        Returns a serializable dictionary representation of the current game state,
-        INCLUDING the deck's state.
-        """
+        """Serialisable dictionary of game state, including the deck's state."""
         if self.state is None:
             return {}
         # Use the existing asdict helper

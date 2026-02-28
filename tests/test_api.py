@@ -15,7 +15,7 @@ class TestUnifiedPokerAPI(unittest.TestCase):
             self.assertIn("Poker vs NFSP Bot", response.text)
 
     def test_solver_recommendation(self):
-        """Test the stateless solver endpoint (JSON in, Recommendation out)."""
+        """Test the stateless solver endpoint (JSON in and recommendation out)."""
         with TestClient(app) as client:
             payload = {
                 "pot": 3,
@@ -32,7 +32,7 @@ class TestUnifiedPokerAPI(unittest.TestCase):
             response = client.post("/get_optimal_action", json=payload)
             
             if response.status_code != 200:
-                print("\nSOLVER ERROR:", response.json())
+                print("\nSolver error:", response.json())
                 
             self.assertEqual(response.status_code, 200)
             data = response.json()
@@ -40,7 +40,7 @@ class TestUnifiedPokerAPI(unittest.TestCase):
             self.assertIn(data["action_type"], ["fold", "call", "raise"])
 
     def test_game_session_flow(self):
-        """Test the stateful game session flow (Cookies, Game State)."""
+        """Test the stateful game session flow (cookies, game state)."""
         with TestClient(app) as client:
             response = client.get("/game_state")
             self.assertEqual(response.status_code, 200)

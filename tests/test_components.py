@@ -111,7 +111,7 @@ class TestNFSPAgent(unittest.TestCase):
             starting_stack=200
         )
 
-    def test_initialization(self):
+    def test_initialisation(self):
         self.assertEqual(self.agent.seat_id, 0)
         self.assertIsNotNone(self.agent.br_network)
         self.assertIsNotNone(self.agent.as_network)
@@ -147,10 +147,7 @@ class TestNFSPAgent(unittest.TestCase):
         self.assertTrue(params_are_identical, "Network weights changed even though buffer was too small.")
 
     def test_observe_showdown_populates_buffer_correctly(self):
-        """
-        Tests that observe_showdown processes the pending experience and pushes 
-        an experience tuple with the correct reward and done flag.
-        """
+        """Tests that observe_showdown processes the pending experience and pushes an experience tuple with the correct reward and done flag."""
         pending_state = _create_dummy_vector()
         pending_action = 1
         self.agent.pending_state = pending_state
@@ -174,9 +171,7 @@ class TestNFSPAgent(unittest.TestCase):
         self.assertIsNone(self.agent.pending_state, "Pending state should be cleared after showdown")
 
     def test_observe_showdown_after_opponent_folds(self):
-        """
-        Tests that a correct final reward is assigned when the hand ends due to a fold.
-        """
+        """Tests that a correct final reward is assigned when the hand ends due to a fold."""
         pending_state = _create_dummy_vector()
         pending_action = 2
         self.agent.pending_state = pending_state
@@ -204,9 +199,7 @@ class TestNFSPAgent(unittest.TestCase):
         self.assertTrue(done, "The experience should be marked as terminal (done=True).")
     
     def test_new_hand_resets_state(self):
-        """
-        Tests that new_hand() correctly resets the agent's per-hand state.
-        """
+        """Tests that new_hand() correctly resets the agent's per-hand state."""
         # Manually set pending state
         self.agent.pending_state = _create_dummy_vector()
         self.agent.pending_action = 2
@@ -217,10 +210,7 @@ class TestNFSPAgent(unittest.TestCase):
         self.assertIsNone(self.agent.pending_action, "pending_action should be reset.")
 
     def test_compute_action_stores_pending_experience(self):
-        """
-        Tests that compute_action stores the current features as pending_state
-        to be used in the NEXT step's transition calculation.
-        """
+        """Tests that compute_action stores the current features as pending_state to be used in the NEXT step's transition calculation."""
         mock_state = _create_mock_state()
         self.assertIsNone(self.agent.pending_state)
 
@@ -234,10 +224,7 @@ class TestNFSPAgent(unittest.TestCase):
         self.assertEqual(self.agent.pending_state.shape, (FEATURE_VECTOR_SIZE,))
 
     def test_compute_action_uses_eta_policy(self):
-        """
-        Tests that compute_action() correctly uses eta to select between
-        the Best Response (BR) and Average Strategy (AS) networks.
-        """
+        """Tests that compute_action() correctly uses eta to select between the BR and AS networks."""
         mock_state = _create_mock_state()
         
         self.agent.eta = 1.0

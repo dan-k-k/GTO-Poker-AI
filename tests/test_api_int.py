@@ -16,13 +16,13 @@ class TestIntegrationFeatures(unittest.TestCase):
     
     @classmethod
     def setUpClass(cls):
-        # Dummy Global Agent
+        # Dummy global agent
         dummy_config = {'eta': 0.1, 'gamma': 0.99, 'batch_size': 128, 'update_frequency': 1, 'learning_rate': 0.001, 'target_update_frequency': 100}
         dummy_buffer = {'rl_buffer_capacity': 100, 'sl_buffer_capacity': 100}
         
         cls.dummy_agent = NFSPAgent(1, dummy_config, dummy_buffer, 10, 10)
         
-        # Mock Network Outputs
+        # Mock network outputs
         mock_out = {
             'action_probs': torch.tensor([[1/NUM_ACTIONS]*NUM_ACTIONS], dtype=torch.float32), 
             'action_logits': torch.zeros((1, NUM_ACTIONS)), 
@@ -40,9 +40,7 @@ class TestIntegrationFeatures(unittest.TestCase):
         cls.loader_patcher.stop()
 
     def test_solver_api_time_travel_verification(self):
-        """
-        Verifies that the Solver API correctly reconstructs past street features from a JSON history log. 
-        """
+        """Verifies that the solver API correctly reconstructs past street features from a JSON history log."""
         payload = {
             "pot": 100, "current_bets": [0, 0], "stacks": [150, 150],
             "initial_stacks": [200, 200], 
@@ -76,13 +74,10 @@ class TestIntegrationFeatures(unittest.TestCase):
                                  "Integration Fail: API failed to parse community cards correctly.")
 
     def test_live_session_memory_verification(self):
-        """
-        Verifies that the Live Bot Endpoint correctly remembers session state
-        across HTTP requests.
-        """
+        """Verifies that the live bot endpoint correctly remembers session stateacross HTTP requests."""
         session_id = "test_live_session"
         
-        # Mock Environment
+        # Mock environment
         dummy_env = MagicMock()
         dummy_state = GameState(
             num_players=2, starting_stack=200, small_blind=1, big_blind=2,
@@ -96,9 +91,9 @@ class TestIntegrationFeatures(unittest.TestCase):
         dummy_env.state = dummy_state
         dummy_env.state.get_legal_actions = MagicMock(return_value=[1, 2])
         dummy_env.state.get_min_raise_amount = MagicMock(return_value=2)
-        dummy_env.state.copy = MagicMock(return_value=dummy_state) # IMPORTANT for observe
+        dummy_env.state.copy = MagicMock(return_value=dummy_state) # Important for observe
 
-        # Return REAL data, not a MagicMock
+        # Return real data, not MagicMock
         dummy_env.get_state_dict.return_value = {
             'pot': 200,
             'stacks': [100, 100],
@@ -124,7 +119,7 @@ class TestIntegrationFeatures(unittest.TestCase):
                 schema = extractor_instance.extract_features(dummy_state, self.dummy_agent)
                 
                 self.assertEqual(schema.flop_cards.made_hand_rank_trips, 1.0, 
-                                 "Integration Fail: Live bot session did not see its own Triple/Quads.")
+                                 "Integration fail: Live bot session did not see its own trips/quads.")
 
 if __name__ == "__main__":
     unittest.main()

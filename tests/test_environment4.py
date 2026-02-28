@@ -9,10 +9,10 @@ def cards(card_strs: list[str]) -> list[int]:
     return [string_to_card_id(s) for s in card_strs]
 
 class TestFinalEdgeCases(unittest.TestCase):
-    """Focuses on Heads-Up specific turn orders, chip conservation in odd splits, and raise re-opening logic."""
+    """Focuses on heads-up specific turn orders, chip conservation in odd splits, and raise re-opening logic."""
 
     def setUp(self):
-        print(f"\n Running Test: {self.id()} ")
+        print(f"\n Running test: {self.id()} ")
 
     def _setup_hand(self, num_players=2, hole_cards=None, community=None, stacks=None, dealer_pos=0):
         env = TexasHoldemEnv(num_players=num_players, starting_stack=2000, small_blind=10, big_blind=20)
@@ -72,10 +72,10 @@ class TestFinalEdgeCases(unittest.TestCase):
         env.step(1)
         env.step(1)
         
-        self.assertEqual(env.state.stage, 1, "Game should be on the Flop")
+        self.assertEqual(env.state.stage, 1, "Game should be on the flop")
         
         # Action should flip to P1 (BB/Non-Dealer)
-        self.assertEqual(env.state.to_move, 1, "Post-flop: BB (Non-Dealer) should act first")
+        self.assertEqual(env.state.to_move, 1, "Post-flop: BB (non-dealer) should act first")
 
     def test_odd_chip_distribution(self):
         """
@@ -104,11 +104,8 @@ class TestFinalEdgeCases(unittest.TestCase):
         self.assertEqual(diff, 1, "Split pot with odd chips should result in 1 chip difference")
 
     def test_full_raise_reopens_action(self):
-        """
-        Verify that in a Heads-Up specific engine, a 'full raise' that puts a player all-in
-        does NOT allow a re-raise. Raising is functionally identical to Calling. Mask Raise as illegal in this spot.
-        """
-        # P0 (SB/Dealer, 2000), P1 (BB, 300).
+        """Verify that in HU, a 'full raise' that puts a player all-in does NOT allow a re-raise. Raising is functionally identical to calling. Mask raise as illegal in this spot."""
+        # P0 (SB/dealer, 2000), P1 (BB, 300).
         env = self._setup_hand(num_players=2, stacks=[2000, 300], dealer_pos=0)
         
         env.step(1) # P0 Call
@@ -123,14 +120,12 @@ class TestFinalEdgeCases(unittest.TestCase):
         
         legal_actions = env.state.get_legal_actions()
         
-        self.assertNotIn(2, legal_actions, "P0 should NOT be allowed to re-raise an All-In in HU (redundant action)")
+        self.assertNotIn(2, legal_actions, "P0 should NOT be allowed to re-raise an all-in in HU")
         self.assertIn(1, legal_actions, "P0 must be able to Call")
         self.assertIn(0, legal_actions, "P0 must be able to Fold")
 
     def test_simultaneous_elimination_results_in_tournament_winner(self):
-        """
-        Tests that a hand eliminating multiple players correctly ends the tournament.
-        """
+        """Tests that a hand eliminating multiple players correctly ends the tournament."""
         hole_cards = [cards(['Ac', 'Ad']), cards(['Kc', 'Kd']), cards(['Qc', 'Qd'])]
         env = self._setup_hand(num_players=3, hole_cards=hole_cards, stacks=[2000, 100, 100], dealer_pos=0)
 
