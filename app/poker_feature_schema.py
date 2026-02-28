@@ -72,7 +72,7 @@ class HandFeatures:
     low_card_rank: float = 0.0          # Rank of our lowest card (0-1, 2=0)
 
 
-# --- The Main Schema ---
+# The Main Schema
 
 @dataclass
 class PokerFeatureSchema:

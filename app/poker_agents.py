@@ -29,12 +29,10 @@ class BRNet(nn.Module):
     def __init__(self, input_size: int = None):  # Dynamic input size from schema
         super().__init__()
         
-        # Get input size dynamically from schema if not provided
         if input_size is None:
             from app.poker_feature_schema import PokerFeatureSchema
             input_size = PokerFeatureSchema.get_vector_size()
         
-        # Shared layers
         self.shared = nn.Sequential(
             nn.Linear(input_size, 256),
             nn.ReLU(),
@@ -48,11 +46,9 @@ class BRNet(nn.Module):
             nn.ReLU()
         )
         
-        # Output heads for Dueling DQN
         self.advantage_head = nn.Linear(32, NUM_ACTIONS)  # Action advantages A(s,a)
         self.value_head = nn.Linear(32, 1)  # State value V(s)
         
-        # Initialize heads
         nn.init.constant_(self.value_head.bias, 0.0)
         nn.init.normal_(self.value_head.weight, 0.0, 0.1)
         nn.init.normal_(self.advantage_head.weight, 0.0, 0.1)
@@ -60,11 +56,10 @@ class BRNet(nn.Module):
     def forward(self, x):
         shared_out = self.shared(x)
         
-        # Get the value and advantage streams
         state_values = self.value_head(shared_out)
         advantages = self.advantage_head(shared_out)
         
-        # Combine them to get the Q-values: Q(s,a) = V(s) + (A(s,a) - mean(A(s,a')))
+        # Q-values: Q(s,a) = V(s) + (A(s,a) - mean(A(s,a')))
         q_values = state_values + (advantages - advantages.mean(dim=1, keepdim=True))
         
         return {
@@ -76,16 +71,14 @@ class BRNet(nn.Module):
     
     def compute_double_dqn_target(self, next_states, rewards, dones, target_network, gamma, next_legal_masks):
         with torch.no_grad():
-            # 1. Main Net selection (Select Best LEGAL Action)
+            # Select Best LEGAL Action
             next_q_values_main = self.forward(next_states)['q_values']
-            
-            # Set illegal actions to negative infinity
             masked_q_main = next_q_values_main.clone()
             masked_q_main[~next_legal_masks] = -float('inf')
             
             next_actions = torch.argmax(masked_q_main, dim=1)
             
-            # 2. Target Net evaluation
+            # Target Net evaluation
             next_q_values_target = target_network.forward(next_states)['q_values']
             next_q_values = next_q_values_target.gather(1, next_actions.unsqueeze(1)).squeeze(1)
             
@@ -120,7 +113,7 @@ class ASNet(nn.Module):
         
         return {'action_logits': logits,   # Used for CrossEntropyLoss
                 'action_probs': probs,     # Used for sampling actions
-                'q_values': logits}
+                'q_values': logits}        # Explicit vals
     
 class PokerAgent:
     """Base poker agent class. All agents inherit from this."""
@@ -129,8 +122,7 @@ class PokerAgent:
         self.seat_id = seat_id
         
     def compute_action(self, state: GameState) -> Tuple[int, Optional[int], Optional[Dict], str, Optional[PokerFeatureSchema]]:
-        """Compute action for the current state.
-        Returns (action, amount) where action ∈ {0: fold, 1: call, 2: raise}"""
+        """Compute action for the current state (0: fold, 1: call, 2: raise (and amt))"""
         raise NotImplementedError
         
     def new_hand(self):
@@ -147,8 +139,6 @@ class PokerAgent:
 
 
 class NeuralNetworkAgent(PokerAgent):
-    """An agent that uses a neural network and a feature extractor to make decisions.
-    Base class for neural network-based agents."""
     def __init__(self, seat_id: int):
         super().__init__(seat_id)
         # The feature extractor is common to both agents
@@ -171,17 +161,15 @@ class NeuralNetworkAgent(PokerAgent):
         
         p = action_probs + 1e-9
         predictions['entropy'] = float(-np.sum(p * np.log(p)))
-
-        # 1. Get Mask of Legal Actions
         legal_action_mask = self._get_legal_action_mask(state)
         
         if not np.any(legal_action_mask):
-            raise RuntimeError("CRITICAL ERROR: No legal actions found for Player {self.seat_id}.")
+            raise RuntimeError("Error: No legal actions found for Player {self.seat_id}.")
 
         action_index = 0
-        is_random_exploration = False # NEW FLAG
+        is_random_exploration = False
 
-        # === PATH A: Best Response (Greedy + Epsilon) ===
+        # Best Response (Greedy + Epsilon)
         if use_greedy:
             if random.random() < epsilon:
                 
@@ -204,7 +192,7 @@ class NeuralNetworkAgent(PokerAgent):
                     available_categories.append('raise')
                     category_probs.append(0.4) # 40% chance to raise (split among sizes)
                     
-                # Normalize probabilities
+                # Normalise probabilities
                 total_p = sum(category_probs)
                 category_probs = [p / total_p for p in category_probs]
                 
@@ -224,7 +212,7 @@ class NeuralNetworkAgent(PokerAgent):
                 masked_q_values[~legal_action_mask] = -float('inf')
                 action_index = np.argmax(masked_q_values)
 
-        # === PATH B: Average Strategy (Softmax Sampling) ===
+        # Average Strategy (Softmax Sampling)
         else:
             filtered_probs = action_probs * legal_action_mask
             prob_sum = np.sum(filtered_probs)
@@ -237,7 +225,7 @@ class NeuralNetworkAgent(PokerAgent):
                 
             action_index = np.random.choice(NUM_ACTIONS, p=filtered_probs)
         
-        # 3. Convert to game action
+        # Convert to game action
         action_type, sizing = ACTION_MAP[action_index]
         amount = None
         
@@ -295,18 +283,17 @@ class NeuralNetworkAgent(PokerAgent):
 
 
 class GTOAgent(NeuralNetworkAgent):
-    """GTO poker agent that uses trained PyTorch models.
-    Layer 1 agent."""
+    """GTO poker agent that uses trained PyTorch models."""
     
     def __init__(self, seat_id: int, model_path: str = "gto_average_strategy.pt"):
         super().__init__(seat_id)
         if not os.path.exists(model_path):
-             raise FileNotFoundError(f"CRITICAL: GTO Model not found at {model_path}. Cannot proceed.")
+             raise FileNotFoundError(f"Critical: GTO Model not found at {model_path}. Cannot proceed.")
         self.network = ASNet()
         try:
             self.network.load_state_dict(torch.load(model_path))
         except RuntimeError as e:
-            raise RuntimeError(f"CRITICAL: Architecture mismatch for GTO Agent. {e}")
+            raise RuntimeError(f"Critical: Architecture mismatch for GTO Agent. {e}")
         
     def compute_action(self, state: GameState) -> Tuple[int, Optional[int], None, str, None]:
         features = self.feature_extractor.extract_features(state).to_vector()
@@ -315,8 +302,7 @@ class GTOAgent(NeuralNetworkAgent):
 
 
 class RandomBot(PokerAgent):
-    """A simple poker agent that makes random legal actions.
-    Useful for testing and as a baseline opponent.""" 
+    """Poker agent that makes random legal actions.""" 
     def __init__(self, seat_id: int, aggression: float = 0.3):
 
         super().__init__(seat_id)
@@ -325,7 +311,7 @@ class RandomBot(PokerAgent):
     def compute_action(self, state: GameState, env=None) -> Tuple[int, Optional[int], None, str, None]: 
         legal_actions = state.get_legal_actions()
         if not legal_actions:
-            return 1, None, None, "Random", None # Fallback to call/check
+            return 1, None, None, "Random", None 
 
         # Try to be aggressive first
         if 2 in legal_actions and random.random() < self.aggression:

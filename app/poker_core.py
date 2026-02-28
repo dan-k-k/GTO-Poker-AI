@@ -8,8 +8,7 @@ import random
 from treys import Evaluator, Card
 
 class Deck:
-    """Standard 52-card deck with shuffling and dealing capabilities.
-    Maintains compatibility with existing integer-based system."""
+    """52-card deck with shuffling and dealing."""
     
     def __init__(self, seed: Optional[int] = None):
         self.rng = random.Random(seed)
@@ -17,7 +16,6 @@ class Deck:
     
     def reset(self):
         """Reset deck to full 52 cards and shuffle."""
-        # Create all 52 cards as integers (for compatibility)
         self.cards = list(range(52))
         self.rng.shuffle(self.cards)
     
@@ -205,7 +203,7 @@ def get_betting_order(seat_id: int, dealer_pos: int, num_players: int) -> int:
     relative_position = (seat_id - dealer_pos) % num_players
     return (relative_position - 1 + num_players) % num_players
 
-# UTILITY FUNCTIONS
+# Utilities
 
 def card_to_string(card_id: int) -> str:
     """Convert card ID (0-51) to string representation like '2s'."""

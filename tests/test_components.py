@@ -12,7 +12,6 @@ from app.poker_feature_schema import PokerFeatureSchema
 from app.poker_agents import ACTION_MAP
 from app.poker_core import GameState
 
-# --- MOCK DATA AND HELPERS ---
 MOCK_CONFIG = {
     'agent': {
         'eta': 0.1, 'gamma': 0.99, 'batch_size': 4,
@@ -70,7 +69,6 @@ class TestBuffers(unittest.TestCase):
         for _ in range(5):
             buffer.push(_create_dummy_vector(), 0, 0.0, _create_dummy_vector(), False, _create_dummy_mask())
         
-        # Unpack the 6 return values
         states, actions, rewards, next_states, dones, next_masks = buffer.sample(batch_size)
         
         self.assertIsInstance(states, torch.Tensor)
@@ -110,7 +108,7 @@ class TestNFSPAgent(unittest.TestCase):
             agent_config=MOCK_CONFIG['agent'],
             buffer_config=MOCK_CONFIG['buffers'],
             random_equity_trials=50,
-            starting_stack=200  # <--- ADDED THIS ARGUMENT
+            starting_stack=200
         )
 
     def test_initialization(self):
@@ -153,15 +151,12 @@ class TestNFSPAgent(unittest.TestCase):
         Tests that observe_showdown processes the pending experience and pushes 
         an experience tuple with the correct reward and done flag.
         """
-        # Set up a pending state (simulating the state at the agent's last action)
         pending_state = _create_dummy_vector()
         pending_action = 1
         self.agent.pending_state = pending_state
         self.agent.pending_action = pending_action
         
-        # Simulating showdown data
         showdown_state = {'stacks_before': {0: 150}, 'stacks_after': {0: 200}}
-
         self.agent.observe_showdown(showdown_state)
         
         self.assertEqual(len(self.agent.rl_buffer), 1, "Should have pushed exactly one experience.")
@@ -182,7 +177,6 @@ class TestNFSPAgent(unittest.TestCase):
         """
         Tests that a correct final reward is assigned when the hand ends due to a fold.
         """
-        # Set up a pending state
         pending_state = _create_dummy_vector()
         pending_action = 2
         self.agent.pending_state = pending_state
@@ -199,7 +193,6 @@ class TestNFSPAgent(unittest.TestCase):
 
         self.assertEqual(len(self.agent.rl_buffer), 1, "Should have pushed the final hand experience.")
 
-        # Access internal arrays instead of unpacking .buffer[0]
         s = self.agent.rl_buffer.states[0]
         a = self.agent.rl_buffer.actions[0]
         r = self.agent.rl_buffer.rewards[0]
@@ -231,14 +224,11 @@ class TestNFSPAgent(unittest.TestCase):
         mock_state = _create_mock_state()
         self.assertIsNone(self.agent.pending_state)
 
-        # Mock the network response to avoid actual inference
         with patch.object(self.agent, '_get_action_from_network') as mock_net_act:
             mock_net_act.return_value = ('call', 0, 1, {}, False) # action_index = 1
             
-            # Call compute action
             self.agent.compute_action(mock_state)
 
-        # Verify pending state was populated
         self.assertIsNotNone(self.agent.pending_state)
         self.assertEqual(self.agent.pending_action, 1)
         self.assertEqual(self.agent.pending_state.shape, (FEATURE_VECTOR_SIZE,))
@@ -250,9 +240,7 @@ class TestNFSPAgent(unittest.TestCase):
         """
         mock_state = _create_mock_state()
         
-        # --- Case 1: Force Average Strategy (eta = 1.0) ---
         self.agent.eta = 1.0
-        # The policy is decided in new_hand(). 
         self.agent.new_hand() 
         
         with patch.object(self.agent, 'as_network', wraps=self.agent.as_network) as spy_as_net, \
@@ -263,9 +251,7 @@ class TestNFSPAgent(unittest.TestCase):
             spy_as_net.assert_called_once()
             spy_br_net.assert_not_called()
 
-        # --- Case 2: Force Best Response (eta = 0.0) ---
         self.agent.eta = 0.0
-        # Call new_hand again to apply the new eta
         self.agent.new_hand()
         
         with patch.object(self.agent, 'as_network', wraps=self.agent.as_network) as spy_as_net, \

@@ -7,7 +7,7 @@ from dataclasses import asdict
 
 class TexasHoldemEnv:
     """Clean poker game environment focused purely on game logic.
-    Currently intended for Heads-up only!
+    Currently intended for Heads-up only.
     AI-specific tracking moved to FeatureExtractor.
     Uses GameState from poker_core."""
 
@@ -18,11 +18,8 @@ class TexasHoldemEnv:
         self.small_blind = small_blind
         self.big_blind = big_blind
 
-        # Use centralized deck and hand evaluator
         self.deck = Deck(seed)
         self.evaluator = HandEvaluator()
-        # Game state container
-
         self.state: Optional[GameState] = None
         self.reset()
 
@@ -86,7 +83,7 @@ class TexasHoldemEnv:
             sb_pos = surviving_players[dealer_idx]
             bb_pos = surviving_players[(dealer_idx + 1) % 2]
         else:
-            # 3+ players: SB is left of dealer, BB is left of SB
+            # 3+ players (not completed elsewhere): SB is left of dealer, BB is left of SB
             dealer_idx = surviving_players.index(dealer_pos)
             sb_idx = (dealer_idx + 1) % len(surviving_players)
             bb_idx = (dealer_idx + 2) % len(surviving_players)
@@ -181,10 +178,9 @@ class TexasHoldemEnv:
             is_all_in_bet = (amount == self.state.stacks[player])
             
             # An all-in is always a legal action, even if it's less than a full min-raise.
-            # Validate the size of non-all-in bets.
             if not is_all_in_bet:
                 required = self.state.get_min_raise_amount()
-                # Strict action validation to prevent illegal under-raises
+                # Prevent illegal under-raises
                 if required is None:
                     raise ValueError(f"Player {player} cannot raise (insufficient chips or illegal state)")
 
@@ -196,16 +192,14 @@ class TexasHoldemEnv:
             if amount > self.state.stacks[player]:
                 raise ValueError(f"Illegal bet size: Player {player} tried to bet {amount}, only has {self.state.stacks[player]} chips")
 
-            # Calculate new total bet after this action
+            # New total bet after action
             new_total_bet = self.state.current_bets[player] + amount
 
             # Prevent illegal under-raises relative to current max bet
             if not is_all_in_bet and new_total_bet < current_max:
                 raise ValueError(f"Illegal under-raise: New total bet {new_total_bet} is less than current max bet {current_max}")
 
-            # A "full raise" that re-opens action must be a raise (new total > current max) 
-            # AND its size (new total - current max) must be at least the last raise size.
-            # An all-in that is too small does not reopen action.
+            # A "full raise" that re-opens action 
             is_a_raise = new_total_bet > current_max
             raise_amount = new_total_bet - current_max
             is_full_raise = is_a_raise and (raise_amount >= self.state.last_raise_size)
@@ -244,7 +238,6 @@ class TexasHoldemEnv:
 
         if not street_is_over:
             # Advance to next player in proper turn order
-            # Find the index of the current player in the list of survivors
             current_idx_in_survivors = self.state.surviving_players.index(player)
             num_survivors = len(self.state.surviving_players)
             # Check the next players in clockwise order
@@ -257,7 +250,7 @@ class TexasHoldemEnv:
                     break
             return self.state, False
             
-        # Street is over - handle all-in situations and advance
+        # Street is over
         if self._should_auto_complete():
             return self._finish_hand_all_in()
             
@@ -292,8 +285,7 @@ class TexasHoldemEnv:
         return self.state, False
 
     def _is_street_over(self) -> bool:
-        """Check if the current betting street is complete.
-        This is true if all active players have either matched the highest bet or are all-in."""
+        """Check if the current betting street is complete."""
         active_players = [p for p in self.state.surviving_players if self.state.active[p]]
         if len(active_players) <= 1: return True
 

@@ -31,7 +31,7 @@ class LayoutManager:
         self.COMMUNITY_CARD_SPACING = 10
         self.DEALER_BUTTON_OFFSET = 30
 
-        # --- Calculated Positions ---
+        # Calculated Positions
         self.center_x, self.center_y = self.IMG_WIDTH / 2, self.IMG_HEIGHT / 2
         
         # Player 0 (Bottom)
@@ -56,7 +56,6 @@ class LayoutManager:
         self.community_y = self.center_y - self.CARD_HEIGHT / 2
         self.pot_pos = (self.center_x, self.center_y + self.CARD_HEIGHT / 2 + 15)
 
-# --- FONT & COLOR SETUP ---
 FONT_PATH = os.path.join("static", "fonts", "DejaVuSans.ttf")
 TABLE_COLOR = (34, 34, 34); FELT_COLOR = (42, 98, 61); BORDER_COLOR = (68, 68, 68)
 WHITE = (255, 255, 255); BLACK = (0, 0, 0); RED = (217, 83, 79)
@@ -64,7 +63,7 @@ BUTTON_COLOR = (220, 220, 220); BUTTON_TEXT_COLOR = (0, 0, 0)
 SUITS = {'c': '♣', 'd': '♦', 'h': '♥', 's': '♠'}
 SUIT_COLORS = {'c': BLACK, 'd': RED, 'h': RED, 's': BLACK}
 
-# --- Drawing Functions ---
+# Drawing
 def _load_fonts(layout: LayoutManager):
     try:
         ui_font = ImageFont.truetype(FONT_PATH, layout.UI_FONT_SIZE)

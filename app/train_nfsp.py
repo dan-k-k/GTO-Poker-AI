@@ -21,20 +21,16 @@ class NFSPTrainer:
     """Main training loop for Neural Fictitious Self-Play."""
     
     def __init__(self, config: Dict):
-        # Store all hyperparameters
+        # Store hyperparameters and setup env
         self.config = config
         self.num_episodes = config['training']['num_episodes']
         self.save_interval = config['training']['save_interval']
         self.eval_interval = config['training']['eval_interval']
 
-        # --- Define a main output directory ---
         self.output_dir = "training_output"
         os.makedirs(self.output_dir, exist_ok=True)
-
-        # Read the simulation config values
         self.random_trials = config['simulations']['random_equity_trials']
 
-        # Initialize environments and agents
         stack_size = config['simulations'].get('starting_stack', 200) 
 
         self.env = TexasHoldemEnv(num_players=2, starting_stack=stack_size)
@@ -42,7 +38,6 @@ class NFSPTrainer:
         self.random_bot = RandomBot(seat_id=1, aggression=0.3)
         self.agents = [NFSPAgent(i, config['agent'], config['buffers'], config['simulations']['random_equity_trials'], starting_stack=stack_size) for i in range(2)]
 
-        # Training statistics (Modified to be bounded)
         self.stats = {
             'episode_rewards': [deque(maxlen=100), deque(maxlen=100)], 
             'buffer_sizes_rl': [deque(maxlen=100), deque(maxlen=100)],
@@ -50,11 +45,9 @@ class NFSPTrainer:
             'training_time': 0
         }
         self.prior_training_time = 0
-
-        # Track best performance
         self.best_avg_reward = -float('inf')
 
-        # --- Initialize the logger ---
+        # Logger
         csv_path = os.path.join(self.output_dir, "metrics.csv")
         plot_path = os.path.join(self.output_dir, "training_dashboard.png")
         log_path = os.path.join(self.output_dir, "hand_history.log")
@@ -62,7 +55,6 @@ class NFSPTrainer:
         self.hand_counter = 0
         self.plotter = LivePlotter(plot_file=plot_path, csv_file=csv_path, batch_size=100)
         
-        # === Attempt to load latest models to resume training ===
         self._load_state()
         self._load_buffers()
         self._load_models(suffix="_latest")
@@ -97,17 +89,16 @@ class NFSPTrainer:
             # Step Environment
             next_state, done = env.step(action, amount)
 
-            # Observations (Crucial for NFSP internal state tracking)
+            # Observations (for NFSP internal state tracking)
             for obs_agent in agents:
                 obs_agent.observe((action, amount), player_idx, state_before, next_state)
             
-            # Log Street changes
             if logger and next_state.stage > state_before.stage:
                 logger.log_street(next_state)
 
             state = next_state
 
-        # End of Hand -> Showdown
+        # End of Hand; Showdown
         final_stacks = state.stacks
         rewards = [final_stacks[i] - initial_stacks[i] for i in range(len(agents))]
 
@@ -116,7 +107,7 @@ class NFSPTrainer:
             'stacks_after': {i: final_stacks[i] for i in range(len(final_stacks))}
         }
 
-        # Finalize Agents (This triggers the final RL buffer push)
+        # Trigger the final RL buffer push
         for agent in agents:
             agent.observe_showdown(showdown_data)
 
@@ -126,11 +117,10 @@ class NFSPTrainer:
         return rewards, None
 
     def _update_stats(self, rewards):
-            """Helper to update deque stats."""
-            for i, r in enumerate(rewards):
-                self.stats['episode_rewards'][i].append(r)
-                self.stats['buffer_sizes_rl'][i].append(len(self.agents[i].rl_buffer))
-                self.stats['buffer_sizes_sl'][i].append(len(self.agents[i].sl_buffer))
+        for i, r in enumerate(rewards):
+            self.stats['episode_rewards'][i].append(r)
+            self.stats['buffer_sizes_rl'][i].append(len(self.agents[i].rl_buffer))
+            self.stats['buffer_sizes_sl'][i].append(len(self.agents[i].sl_buffer))
                 
     def train(self):
         """Main training loop with Resume and Interrupt handling."""
@@ -150,7 +140,7 @@ class NFSPTrainer:
             for episode in range(start_episode, self.num_episodes):
                 self.hand_counter = episode 
 
-                # 1. Training Step
+                # Training step
                 for agent in self.agents:
                     agent.set_mode('train')
                 
@@ -164,18 +154,18 @@ class NFSPTrainer:
                     progress = (episode / self.num_episodes); curr_eps = self.agents[0].get_current_epsilon()
                     print(f"[{progress:.1%}] Ep {episode:,}/{self.num_episodes:,} | Eps: {curr_eps:.3f} | {elapsed:.1f}s | RL_Buf: {len(self.agents[0].rl_buffer)}, SL_Buf: {len(self.agents[0].sl_buffer)} | Recent Rew: {np.mean(self.stats['episode_rewards'][0]):.2f}")
 
-                # 2. Evaluation Step
+                # Evaluation step
                 if episode > 0 and episode % self.eval_interval == 0:
                     self._evaluate_performance(episode)
 
-                # 3. Save Step
+                # Save step
                 if episode > 0 and episode % self.save_interval == 0:
                     self._perform_save(session_start_time, episode)
 
             completed_normally = True
 
         except KeyboardInterrupt:
-            print(f"\nTraining interrupted by user at Episode {self.hand_counter}!")
+            print(f"\nTraining interrupted at Episode {self.hand_counter}!")
             # Graceful save ONLY on manual interrupt
             self._perform_save(session_start_time, self.hand_counter)
         
@@ -184,7 +174,6 @@ class NFSPTrainer:
             self._perform_save(session_start_time, self.hand_counter)
 
     def _perform_save(self, session_start_time, episode):
-        """Helper to centralize saving logic."""
         current_session_duration = time.time() - session_start_time
         total_seconds = self.prior_training_time + current_session_duration
         self.stats['training_time'] = total_seconds
@@ -203,7 +192,7 @@ class NFSPTrainer:
 
         wins = 0
         total_profit = 0
-        eval_episodes = 1000 # Increase to 2000+ for higher precision/less luck
+        eval_episodes = 1000 # Increase to 2000+ for higher precision/less variance
         
         bb_size = self.eval_env.big_blind
         for _ in range(eval_episodes):
@@ -221,16 +210,15 @@ class NFSPTrainer:
         if avg_reward > self.best_avg_reward:
             print(f"New Best Performance found! (Avg Profit: {avg_reward:.2f} > Previous: {self.best_avg_reward:.2f})")
             self.best_avg_reward = avg_reward
-            self._save_models(episode, suffix="_best")
+            self._save_models(episode, suffix="_best") # A better eval method is by tracking play %s against GTO
             
         agent_to_eval.set_mode('train')
 
     def _save_state(self):
-        """Saves the current training metadata AND stats ATOMICALLY."""
+        """Saves the current training metadata and stats *atomically*."""
         state_path = os.path.join(self.output_dir, "training_state.json")
         temp_path = state_path + ".tmp"
         
-        # Convert deques to lists
         stats_to_save = {'episode_rewards': [list(d) for d in self.stats['episode_rewards']],
                          'buffer_sizes_rl': [list(d) for d in self.stats['buffer_sizes_rl']],
                          'buffer_sizes_sl': [list(d) for d in self.stats['buffer_sizes_sl']],
@@ -352,14 +340,12 @@ class NFSPTrainer:
                     
 def main(config_path: str = "config.yaml"):
     """Main training function."""
-    # 1. Load configuration from the YAML file path
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
         
-    print("--- Configuration Loaded ---")
+    print(" Configuration Loaded ")
     print(json.dumps(config, indent=2))
 
-    # 2. Pass the entire config object to the trainer
     trainer = NFSPTrainer(config=config)
     trainer.train()
 

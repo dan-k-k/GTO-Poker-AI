@@ -61,7 +61,6 @@ class ReplayBuffer:
     
     def __getstate__(self):
         """Only save the valid parts of the arrays to save disk space."""
-        # Optimization: Only slice if not full.
         if self.size < self.capacity:
             return {'capacity': self.capacity, 'input_size': self.input_size, 'action_dim': self.action_dim, 'ptr': self.ptr, 'size': self.size, 'states': self.states[:self.size], 'next_states': self.next_states[:self.size], 'actions': self.actions[:self.size], 'rewards': self.rewards[:self.size], 'dones': self.dones[:self.size], 'masks': self.masks[:self.size]}
         else:
@@ -107,8 +106,7 @@ class SLBuffer:
 
     def push(self, state: np.ndarray, action_index: int):
         """Store state-action_index pair using Random Replacement."""
-        if not np.isfinite(state).all(): raise ValueError("CRITICAL: SL Buffer received NaN/Inf state.")
-        # Lazy initialization
+        if not np.isfinite(state).all(): raise ValueError("Critical: SL Buffer received NaN/Inf state.")
         if self.state_buffer is None:
             self._init_buffers(state.shape[0])
 
@@ -125,14 +123,11 @@ class SLBuffer:
     def sample(self, batch_size: int) -> Tuple[torch.Tensor, torch.LongTensor]:
         real_batch_size = min(self.size, batch_size)
         indices = np.random.randint(0, self.size, size=real_batch_size)
-        
-        # Return Tensors directly from numpy arrays (Fast!)
         return torch.from_numpy(self.state_buffer[indices]), torch.from_numpy(self.action_buffer[indices])
         
     def __len__(self):
         return self.size
 
-    # Methods to load old buffers
     def __getstate__(self):
         """Called when saving: only save the efficient numpy arrays."""
         return {'capacity': self.capacity,'input_size': self.input_size,'state_buffer': self.state_buffer,'action_buffer': self.action_buffer,'size': self.size,'total_count': self.total_count}
@@ -212,17 +207,17 @@ class NFSPAgent(NeuralNetworkAgent):
         
         self.use_average_strategy_this_hand = False
 
-        # === EXPERIENCE STORE ===
+        # Experience store
         self.pending_state: Optional[np.ndarray] = None
         self.pending_action: Optional[int] = None
 
     def compute_action(self, state: GameState) -> Tuple[int, Optional[int], Dict, str, 'PokerFeatureSchema']:
-        # 1. Extract current state features (S_t)
+        # Extract current state features (S_t)
         features_schema = self.feature_extractor.extract_features(state)
         current_features_vector = features_schema.to_vector()
         current_legal_mask = self._get_legal_action_mask(state)
 
-        # 2. Check if we have a pending experience from the previous turn (S_{t-1})
+        # Check for pending experience from the previous turn (S_{t-1})
         if self.mode == 'train' and self.pending_state is not None:
             self.rl_buffer.push(
                 state=self.pending_state,
@@ -234,7 +229,7 @@ class NFSPAgent(NeuralNetworkAgent):
             )
             self._attempt_learning_step()
 
-        # 3. Select New Action (A_t)
+        # Select New Action (A_t)
         use_average_strategy = self.use_average_strategy_this_hand
         
         if use_average_strategy:
@@ -258,20 +253,15 @@ class NFSPAgent(NeuralNetworkAgent):
     def observe(self, player_action, player_id, state_before_action: GameState, next_state: GameState):
         """Passive observation. Only use this to update the feature extractor."""
         action_taken, amount_put_in = player_action
-        
-        # 1. Update Betting History in Feature Extractor
         self.feature_extractor.update_betting_action(player_id, action_taken, state_before_action, state_before_action.stage)
             
     def observe_showdown(self, showdown_state):
         """The hand is over. We must close the loop on the LAST action taken. This provides the final reward (S_last -> S_terminal)."""
-        # Calculate the single, final reward.
         my_stack_before = showdown_state.get('stacks_before', {}).get(self.seat_id, 0)
         my_stack_after = showdown_state.get('stacks_after', {}).get(self.seat_id, 0)
-        # Dynamic scaling using the stored starting_stack
         raw_reward = my_stack_after - my_stack_before
         final_reward = raw_reward / self.starting_stack
 
-        # If we have a pending action that hasn't been closed yet
         if self.pending_state is not None and self.pending_action is not None:
             
             dummy_terminal_state = np.zeros_like(self.pending_state)
@@ -279,9 +269,9 @@ class NFSPAgent(NeuralNetworkAgent):
             self.rl_buffer.push(
                 state=self.pending_state,
                 action=self.pending_action,
-                reward=final_reward,     # THE REAL REWARD IS HERE
+                reward=final_reward,
                 next_state=dummy_terminal_state,
-                done=True,                # TERMINAL FLAG
+                done=True,
                 next_legal_mask=np.ones(NUM_ACTIONS, dtype=bool)
             )
             
@@ -305,33 +295,33 @@ class NFSPAgent(NeuralNetworkAgent):
             
         states, actions, rewards, next_states, dones, next_legal_masks = self.rl_buffer.sample(self.batch_size)
         
-        # 1. Current Q(s, a)
+        # Current Q(s, a)
         current_q_values_ = self.br_network(states)['q_values']
-        if torch.isnan(current_q_values_).any(): raise RuntimeError("CRITICAL: BR Network output contains NaNs! Model is corrupted.")
+        if torch.isnan(current_q_values_).any(): raise RuntimeError("Critical: BR Network output contains NaNs! Model is corrupted.")
         current_q_values = torch.gather(current_q_values_, 1, actions.unsqueeze(1)).squeeze(1)
         
-        # 2. Target = r + gamma * max Q(s', a'). Double DQN: Use Main Net to choose action, Target Net to evaluate value
+        # Target = r + gamma * max Q(s', a'). Double DQN: Use Main Net to choose action, Target Net to evaluate value
         target_q_values = self.br_network.compute_double_dqn_target(next_states, rewards, dones, self.br_target_network, self.gamma, next_legal_masks)
         
-        # 3. Loss
+        # Loss
         loss = nn.MSELoss()(current_q_values, target_q_values)
         if torch.isnan(loss) or torch.isinf(loss):
             crash_dir = os.path.join("training_output", "models")
             os.makedirs(crash_dir, exist_ok=True) # Ensure folder exists
             crash_path = os.path.join(crash_dir, "crash_states.pt")
             torch.save(states, crash_path)
-            raise RuntimeError(f"CRITICAL: BR Training Loss is {loss.item()}! Stopping to prevent pollution.")
+            raise RuntimeError(f"Critical: BR Training Loss is {loss.item()}! Stopping to prevent pollution.")
         self.br_optimizer.zero_grad()
         loss.backward()
         for name, param in self.br_network.named_parameters():
             if param.grad is not None:
                 if torch.isnan(param.grad).any():
-                    raise RuntimeError(f"CRITICAL: NaN gradient detected in {name} BEFORE clipping.")
+                    raise RuntimeError(f"Critical: NaN gradient detected in {name} BEFORE clipping.")
         total_norm = torch.nn.utils.clip_grad_norm_(self.br_network.parameters(), 1.0)
-        if torch.isnan(total_norm) or torch.isinf(total_norm): raise RuntimeError("CRITICAL: Gradients exploded (NaN/Inf) even after clipping.")
+        if torch.isnan(total_norm) or torch.isinf(total_norm): raise RuntimeError("Critical: Gradients exploded (NaN/Inf) even after clipping.")
         self.br_optimizer.step()
         
-        # 4. Sync Target Network
+        # Sync Target Network
         if self.step_count % self.target_update_frequency == 0:
             self.br_target_network.load_state_dict(self.br_network.state_dict())
         
@@ -402,7 +392,7 @@ class NFSPAgent(NeuralNetworkAgent):
             
     def load_models(self, br_path: str, as_path: str):
         if not os.path.exists(br_path):
-            raise FileNotFoundError(f"CRITICAL: Model file not found at {br_path}")
+            raise FileNotFoundError(f"Critical: Model file not found at {br_path}")
         try:
             checkpoint_br = torch.load(br_path, map_location='cpu')
             self.br_network.load_state_dict(checkpoint_br['model_state_dict'])
@@ -421,7 +411,7 @@ class NFSPAgent(NeuralNetworkAgent):
             
             print(f"Loaded NFSP models from {br_path}")
         except Exception as e:
-            raise RuntimeError(f"CRITICAL: Failed to load models. File corrupt or architecture mismatch. Error: {e}")
+            raise RuntimeError(f"Critical: Failed to load models. File corrupt or architecture mismatch. Error: {e}")
 
     def save_buffers(self, rl_path: str, sl_path: str):
         """Saves buffers atomically to prevent corruption on interrupt."""
@@ -442,7 +432,7 @@ class NFSPAgent(NeuralNetworkAgent):
 
     def load_buffers(self, rl_path: str, sl_path: str):
         if not os.path.exists(rl_path) or not os.path.exists(sl_path):
-            raise FileNotFoundError(f"RESUME CRITICAL: Buffer files missing at {rl_path}")
+            raise FileNotFoundError(f"Resume Critical: Buffer files missing at {rl_path}")
 
         with open(rl_path, 'rb') as f:
             new_rl = pickle.load(f)
@@ -454,7 +444,7 @@ class NFSPAgent(NeuralNetworkAgent):
             raise ValueError(f"DIMENSION MISMATCH: RL Buffer has {new_rl.input_size} features, "
                              f"but model expects {current_dim}. Did you change the FeatureExtractor?")
         if np.isnan(new_rl.states[:new_rl.size]).any():
-            raise ValueError("CRITICAL: Loaded RL Buffer contains NaN values. The save file is corrupted.")
+            raise ValueError("Critical: Loaded RL Buffer contains NaN values. The save file is corrupted.")
 
         self.rl_buffer = new_rl
         self.sl_buffer = new_sl

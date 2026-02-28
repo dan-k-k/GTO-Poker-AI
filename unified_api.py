@@ -10,7 +10,7 @@ from io import BytesIO
 from contextlib import asynccontextmanager
 from typing import Dict, Optional, List
 from datetime import datetime
-from starlette.status import HTTP_303_SEE_OTHER # Add this import
+from starlette.status import HTTP_303_SEE_OTHER 
 
 from fastapi import FastAPI, Request, Response, HTTPException, Depends, Cookie
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -21,28 +21,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, Column, Integer, String, Text, Float, DateTime
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-# --- App Imports ---
 from app.TexasHoldemEnv import TexasHoldemEnv
 from app.nfsp_components import NFSPAgent
 from app.poker_core import GameState, string_to_card_id
 from app.feature_extractor import FeatureExtractor
 from app._visuals import create_table_image 
 
-# --- Schema Imports ---
 from api_schemas import GameStateInput, ActionResponse, ActionLog
 
-# Global State & Configuration
-# ==========================================
-
-# 1. Global AI Model (Loaded once)
 GLOBAL_MODEL_AGENT: Optional[NFSPAgent] = None
 
-# 2. In-Memory Session Store for "Play vs Bot"
 ACTIVE_SESSIONS: Dict[str, Dict] = {}
 
 templates = Jinja2Templates(directory="templates")
 
-# Define standard config centrally so it can be reused
 STANDARD_AGENT_CONFIG = {
     'eta': 0.1, 
     'gamma': 0.99, 
@@ -53,7 +45,7 @@ STANDARD_AGENT_CONFIG = {
 }
 
 def load_global_model():
-    """Loads the 'Brain' used for the Solver API."""
+    """Loads the brain used for the Solver API."""
     print("Loading Global AI Model...")
     buffer_config = {'rl_buffer_capacity': 10000, 'sl_buffer_capacity': 10000}
     
@@ -94,7 +86,6 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Helper Functions
-# ==========================================
 
 def get_game_response(session_data: dict) -> dict:
     """Formats the env state for the UI (Images, valid actions, etc)."""
@@ -115,7 +106,6 @@ def get_game_response(session_data: dict) -> dict:
     state_dict['pnl_history'] = session_data.get('pnl_history', [])
     return state_dict
 
-# --- Helper for Solver ---
 def convert_input_to_state(data: GameStateInput) -> GameState:
     num_players = len(data.stacks)
     hole_cards_ints = [[string_to_card_id(c) for c in hand] for hand in data.hole_cards]
@@ -155,15 +145,12 @@ def reconstruct_feature_extractor(seat_id: int, past_actions: list) -> FeatureEx
     previous_stage = 0
 
     for log in past_actions:
-        # SAFETY: If we moved to a new street, reset the "last raiser" logic
         if log.stage > previous_stage:
             current_last_raiser = None
             previous_stage = log.stage
 
-        # Create state snapshot reflecting context BEFORE this action occurred
         mock_state = MockState(stage=log.stage, last_raiser=current_last_raiser)
         
-        # FIX: Pass 'log.action_type' (int) directly, NOT the tuple
         extractor.update_betting_action(
             player_id=log.seat_id, 
             action=log.action_type, 
@@ -171,16 +158,13 @@ def reconstruct_feature_extractor(seat_id: int, past_actions: list) -> FeatureEx
             stage=log.stage
         )
         
-        # If this action was a Bet/Raise (type 2), update the raiser for the next iteration
         if log.action_type == 2:
             current_last_raiser = log.seat_id
             
     return extractor
 
 
-# ==========================================
-# PART 1: The Solver API (Stateless)
-# ==========================================
+# The Solver API (Stateless)
 
 @app.post("/get_optimal_action", 
           response_model=ActionResponse,
@@ -216,9 +200,7 @@ def predict_optimal_action(input_data: GameStateInput):
     )
 
 
-# ==========================================
-# PART 2: The Playable Game (Stateful)
-# ==========================================
+# The Playable Game (Stateful)
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
@@ -230,7 +212,6 @@ async def solver_dashboard(request: Request):
 
 @app.get("/game_state")
 async def get_game_state(request: Request):
-    # 1. Retrieve or Generate Session ID
     session_id = request.cookies.get("session_id")
     is_new_session = False
     
@@ -238,7 +219,6 @@ async def get_game_state(request: Request):
         session_id = str(uuid.uuid4())
         is_new_session = True
         
-    # 2. Initialize Game Session if not exists
     if session_id not in ACTIVE_SESSIONS:
         print(f"Initializing new game for session: {session_id}")
         env = TexasHoldemEnv(num_players=2)
@@ -246,7 +226,6 @@ async def get_game_state(request: Request):
         
         agent = NFSPAgent(seat_id=1, agent_config=STANDARD_AGENT_CONFIG, buffer_config={'rl_buffer_capacity': 10000, 'sl_buffer_capacity': 10000}, random_equity_trials=500, starting_stack=200)
         
-        # Share Global Networks
         if GLOBAL_MODEL_AGENT:
             agent.br_network = GLOBAL_MODEL_AGENT.br_network
             agent.as_network = GLOBAL_MODEL_AGENT.as_network
@@ -259,11 +238,9 @@ async def get_game_state(request: Request):
             'pnl_history': [env.starting_stack]
         }
     
-    # 3. Construct Response
     data = get_game_response(ACTIVE_SESSIONS[session_id])
     response = JSONResponse(content=data)
     
-    # 4. Explicitly Set Cookie on the returned JSONResponse object
     if is_new_session:
         response.set_cookie(key="session_id", value=session_id)
 
@@ -339,7 +316,6 @@ async def new_game(request: Request):
         bot_agent.new_hand()
     else:
         del ACTIVE_SESSIONS[session_id]
-        # CHANGE: Use status_code=303 to force the browser to switch from POST to GET
         return RedirectResponse(url="/game_state", status_code=HTTP_303_SEE_OTHER)
 
     return JSONResponse(get_game_response(session_data))

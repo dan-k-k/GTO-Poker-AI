@@ -10,20 +10,14 @@ from app.poker_core import GameState, string_to_card_id
 from app.poker_feature_schema import PokerFeatureSchema, BettingRoundFeatures, StreetFeatures
 from app.nfsp_components import NFSPAgent 
 
-# Helper function to create card lists from strings
 def cards(card_strs: list[str]) -> list[int]:
-    """Converts a list of card strings (e.g., ['As', 'Ks']) to integer IDs."""
     return [string_to_card_id(s) for s in card_strs]
 
 class TestFeatureExtractor(unittest.TestCase):
-    """A comprehensive test suite for the FeatureExtractor."""
-
     def setUp(self):
-        """Set up a fresh feature extractor for player 0 before each test."""
         self.extractor = FeatureExtractor(seat_id=0, num_players=2)
 
     def _create_base_state(self, **kwargs) -> GameState:
-        """Creates a mock GameState object with reasonable defaults for a 2-player game."""
         defaults = {
             'num_players': 2, 'starting_stack': 200, 'small_blind': 1, 'big_blind': 2,
             'hole_cards': [cards(['As', 'Ks']), cards(['Qd', 'Qc'])],
@@ -42,7 +36,7 @@ class TestFeatureExtractor(unittest.TestCase):
 
     def test_hand_static_features(self):
         """Tests features that are static for the entire hand (position, hole cards)."""
-        print("\n--- Testing Hand-Static Features ---")
+        print("\n Testing Hand-Static Features ")
         
         state1 = self._create_base_state(
             hole_cards=[cards(['Ac', 'Ad']), cards(['7h', '2s'])],
@@ -67,7 +61,7 @@ class TestFeatureExtractor(unittest.TestCase):
 
     def test_dynamic_features_at_decision_point(self):
         """Tests features that change with every action (stacks, pot odds, SPR)."""
-        print("\n--- Testing Action-Dependent Dynamic Features ---")
+        print("\n Testing Action-Dependent Dynamic Features ")
         state = self._create_base_state(
             stage=1, community=cards(['Jc', '8d', '2s']),
             pot=100, big_blind=10, starting_stack=200, num_players=2,
@@ -99,7 +93,7 @@ class TestFeatureExtractor(unittest.TestCase):
 
     def test_card_based_street_features(self):
         """Tests both player-specific and board-only card features (made hands, draws)."""
-        print("\n--- Testing Card-Based Street Features (Player and Board) ---")
+        print("\n Testing Card-Based Street Features (Player and Board) ")
         
         state_2p = self._create_base_state(stage=1, hole_cards=[cards(['As', 'Kh'])], community=cards(['Ac', 'Kc', '7d']))
         schema_2p = self.extractor.extract_features(state_2p)
@@ -128,8 +122,7 @@ class TestFeatureExtractor(unittest.TestCase):
 
     def test_tiered_blocker_features_are_correct(self):
         """Tests that the tiered blocker features are calculated correctly."""
-        print("\n--- Testing Tiered Blocker Features ---")
-        print("  --> Testing 'has_flush_blocker'")
+        print("Testing 'has_flush_blocker'")
 
         self.extractor.new_hand()
         state_immediate_flush_blocker = self._create_base_state(
@@ -153,7 +146,7 @@ class TestFeatureExtractor(unittest.TestCase):
         self.assertEqual(schema3.flop_cards.has_flush_blocker, 0.0)
         self.assertEqual(schema3.flop_cards.made_hand_rank_flush, 1.0)
 
-        print("  --> Testing 'straight_blocker_value'")
+        print("Testing 'straight_blocker_value'")
 
         self.extractor.new_hand()
         state_oesd_blocker = self._create_base_state(
@@ -187,7 +180,7 @@ class TestFeatureExtractor(unittest.TestCase):
 
     def test_board_texture_features(self):
         """Tests the feature extractor's ability to analyze complex board textures."""
-        print("\n--- Testing Complex Board Texture Features ---")
+        print("\n Testing Complex Board Texture Features ")
 
         self.extractor.new_hand()
         opp_extractor = FeatureExtractor(seat_id=1) 
@@ -233,7 +226,7 @@ class TestFeatureExtractor(unittest.TestCase):
 
     def test_full_hand_history_and_separation(self):
         """Simulates a multi-street hand to verify historical vs dynamic data."""
-        print("\n--- Testing Full Hand History & Past/Present Separation ---")
+        print("\n Testing Full Hand History & Past/Present Separation ")
         self.extractor.new_hand()
         
         state_p1_open = self._create_base_state(pot=3, stage=0, current_bets=[2, 1])
@@ -272,7 +265,7 @@ class TestFeatureExtractor(unittest.TestCase):
 
     def test_opponent_perspective_is_mirrored(self):
         """Ensures the FeatureExtractor's logic is symmetrical."""
-        print("\n--- Testing Opponent Perspective Mirroring ---")
+        print("\n Testing Opponent Perspective Mirroring ")
         my_extractor = FeatureExtractor(seat_id=0)
         opp_extractor = FeatureExtractor(seat_id=1)
 
@@ -306,7 +299,7 @@ class TestFeatureExtractor(unittest.TestCase):
 
     def test_rare_board_made_hands(self):
         """Tests that the extractor correctly identifies rare made hands on the board."""
-        print("\n--- Testing Rare Board-Only Made Hands ---")
+        print("\n Testing Board-Only Made Hands ")
 
         self.extractor.new_hand()
         state_flush = self._create_base_state(stage=3, community=cards(['2h', '5h', '8h', 'Th', 'Kh']))
@@ -328,8 +321,7 @@ class TestFeatureExtractor(unittest.TestCase):
         Verifies the `skip_random_equity` flag correctly prevents
         the random_strength calculation without altering other features.
         """
-        print("\n--- Testing skip_random_equity Flag ---")
-        # Arrange: Set up a standard post-flop state
+        print("\n Testing skip_random_equity Flag ")
         state = self._create_base_state(
             stage=1, 
             hole_cards=[cards(['As', 'Kh'])], 
@@ -339,23 +331,15 @@ class TestFeatureExtractor(unittest.TestCase):
         extractor_with_equity = FeatureExtractor(seat_id=0)
         extractor_without_equity = FeatureExtractor(seat_id=0)
 
-        # Act: Extract features using the independent instances
         schema_with_equity = extractor_with_equity.extract_features(state, skip_random_equity=False)
         schema_without_equity = extractor_without_equity.extract_features(state, skip_random_equity=True)
 
-        # Assert:
-        # 1. The calculation should have run in the first case
         self.assertGreater(schema_with_equity.flop_cards.random_strength, 0, 
                          "random_strength should be calculated when flag is False")
         
-        # 2. The calculation should have been skipped in the second case, leaving default values
         self.assertEqual(schema_without_equity.flop_cards.random_strength, 0.0,
                          "random_strength should be 0.0 when flag is True")
         
-        # 3. All other features should be identical
-        # Temporarily set all equity-related fields to be the same to compare the rest of the object.
-        
-        # Reset the equity for ALL processed streets.
         schema_with_equity.preflop_cards.random_strength = 0.0
         schema_with_equity.flop_cards.random_strength = 0.0
 

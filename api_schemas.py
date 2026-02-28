@@ -12,14 +12,14 @@ class GameStateInput(BaseModel):
     pot: int
     current_bets: List[int]
     stacks: List[int]
-    initial_stacks: List[int] # <--- Required now
+    initial_stacks: List[int] 
     hole_cards: List[List[str]] 
     community_cards: List[str]
     dealer_id: int
     to_move: int
     stage: int
     
-    past_actions: List[ActionLog] = [] # <--- Required for history
+    past_actions: List[ActionLog] = [] 
     legal_actions: Optional[List[int]] = None
 
 class ActionResponse(BaseModel):

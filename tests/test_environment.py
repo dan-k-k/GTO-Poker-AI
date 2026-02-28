@@ -6,28 +6,21 @@ from app.TexasHoldemEnv import TexasHoldemEnv, GameState
 from app.poker_core import string_to_card_id, HandEvaluator
 
 def cards(card_strs: list[str]) -> list[int]:
-    """Helper to convert a list of card strings to integer IDs for tests."""
     return [string_to_card_id(s) for s in card_strs]
 
 class TestTexasHoldemEnv(unittest.TestCase):
-    """A comprehensive test suite for the TexasHoldemEnv class."""
-
     def setUp(self):
-        """This method is called before each test function."""
-        print(f"\n--- Running: {self.id()} ---")
+        print(f"\n Running Test: {self.id()} ")
         self.evaluator = HandEvaluator()
 
     def _setup_hand(self, num_players=2, hole_cards=None, community=None, stacks=None, dealer_pos=0):
-        """A powerful helper to manually set up a specific game state for testing."""
         env = TexasHoldemEnv(num_players=num_players, starting_stack=200, small_blind=10, big_blind=20)
         
-        # Override the random state with a specific, controlled scenario
         if stacks is None:
             stacks = [2000] * num_players
         if hole_cards is None:
             hole_cards = [cards(['As', 'Ks']), cards(['Ad', 'Kd'])]
             
-        # Remove manually assigned cards from the deck
         used_cards = []
         if hole_cards:
             for hand in hole_cards:
@@ -35,23 +28,19 @@ class TestTexasHoldemEnv(unittest.TestCase):
         if community:
             used_cards.extend(community)
             
-        # Remove these specific integers from the deck's list of available cards
-        env.deck.cards = [c for c in env.deck.cards if c not in used_cards]
+        env.deck.cards = [c for c in env.deck.cards if c not in used_cards] # Removes cards from available (in deck)
 
-        # Capture the state of the stacks *before* blinds are posted.
         starting_stacks_for_hand = stacks.copy()
             
-        # Determine positions based on dealer
         if num_players == 2:
             sb_pos = dealer_pos
             bb_pos = (dealer_pos + 1) % 2
-            to_move = sb_pos # Heads-up, SB is first to act pre-flop
+            to_move = sb_pos # Heads-up, SB is first to act preflop
         else:
             sb_pos = (dealer_pos + 1) % num_players
             bb_pos = (dealer_pos + 2) % num_players
             to_move = (dealer_pos + 3) % num_players
             
-        # Post blinds (...modifies the 'stacks' list)
         current_bets = [0] * num_players
         pot = 30
         stacks[sb_pos] -= 10
@@ -129,12 +118,10 @@ class TestTexasHoldemEnv(unittest.TestCase):
 
     def test_all_in_and_auto_completion(self):
         """Test that the board completes automatically after an all-in."""
-        # Setup: P0 is SB, P1 is BB. Stacks are BEFORE blinds are posted.
+        # Setup: P0 is SB, P1 is BB.
         env = self._setup_hand(dealer_pos=0, stacks=[200, 2000])
         env.state.to_move = 0
         
-        # The helper posts blinds, so P0's actual stack is 200 - 10 (SB) = 190.
-        # This is the correct all-in amount.
         p0_all_in_amount = env.state.stacks[0]
         self.assertEqual(p0_all_in_amount, 190, "P0's stack should be 190 after posting SB")
 
@@ -148,15 +135,14 @@ class TestTexasHoldemEnv(unittest.TestCase):
         self.assertEqual(state.win_reason, 'all_in_showdown')
         self.assertEqual(state.pot, 0, "Pot should be 0 after distribution")
         
-        # Verify chip conservation. Total chips should be 200 + 2000 = 2200.
         self.assertEqual(sum(state.stacks), 2200, "Total chip count must be conserved")
 
     def test_side_pot_logic(self):
-        """The ultimate test: 3 players, one short-stack all-in, creating a side pot."""
+        """Three players, one short-stack all-in, creating a side pot."""
         hole_cards = [
-            cards(['As', 'Ad']),  # Player 0 (Big Stack) - Best hand
-            cards(['Ks', 'Kd']),  # Player 1 (Medium Stack) - Second best hand
-            cards(['Qs', 'Qd'])   # Player 2 (Short Stack) - Worst hand
+            cards(['As', 'Ad']),  # Player 0 (Big Stack), best hand
+            cards(['Ks', 'Kd']),  # Player 1 (Medium Stack), second best hand
+            cards(['Qs', 'Qd'])   # Player 2 (Short Stack), worst hand
         ]
         stacks = [2000, 1000, 200]
         env = self._setup_hand(num_players=3, hole_cards=hole_cards, stacks=stacks, dealer_pos=0)
@@ -167,7 +153,6 @@ class TestTexasHoldemEnv(unittest.TestCase):
         # P1 all-in for remaining 800. P0 calls 800.
         # Side Pot: 800*2 = 1600. Eligible: P0, P1.
         
-        # Simulate a final state for showdown
         env.state.terminal = True
         env.state.active = [True, True, True]
         env.state.starting_stacks_this_hand = [2000, 1000, 200]
@@ -175,7 +160,6 @@ class TestTexasHoldemEnv(unittest.TestCase):
         env.state.pot = 2200
         env.state.community = cards(['2c', '3d', '4h', '5s', '7h']) # No one improves
 
-        # Manually trigger pot distribution
         hand_ranks = env._calculate_showdown_hand_ranks()
         env._distribute_pot_with_side_pots(hand_ranks)
         
@@ -183,7 +167,7 @@ class TestTexasHoldemEnv(unittest.TestCase):
         
         # P0 had AA, wins both pots.
         # Main pot (600) + Side pot (1600) = 2200.
-        # P0 started with 2000, invested 1000 -> 1000 left.
+        # P0 started with 2000, invested 1000. 1000 left.
         # P0 final stack = 1000 (remaining) + 2200 (winnings) = 3200.
         self.assertEqual(final_stacks[0], 3200, "P0 should win both pots")
         self.assertEqual(final_stacks[1], 0, "P1 should be eliminated")
@@ -199,7 +183,7 @@ class TestTexasHoldemEnv(unittest.TestCase):
         env.state.active = [True, True]
         env.state.terminal = True
         
-        # Best hand for both is KKQQA. Split pot.
+        # Both have KKQQA.
         hand_ranks = env._calculate_showdown_hand_ranks()
         env._distribute_pot_with_side_pots(hand_ranks)
         final_stacks = env.state.stacks
@@ -211,22 +195,16 @@ class TestTexasHoldemEnv(unittest.TestCase):
         """Test that players are eliminated and a winner is declared."""
         env = TexasHoldemEnv(num_players=2, starting_stack=100)
         
-        # Manually set a state where P1 is about to lose
         env.state.stacks = [200, 0]
         env.state.surviving_players = [0, 1]
         
-        # This function is called at the end of a hand
         env._check_tournament_winner()
         
-        # Check that P1 was eliminated
         self.assertEqual(env.state.surviving_players, [0], "Only player 0 should survive")
         self.assertTrue(env.state.terminal, "Game should be terminal")
         self.assertEqual(env.state.win_reason, 'tournament_winner', "Win reason should be set")
         
-        # Now, calling reset should start a completely new tournament.
         state = env.reset()
-        
-        # Check that the state has been properly reset
         self.assertFalse(state.terminal, "Resetting a finished game should start a new, non-terminal game")
         self.assertIsNone(state.win_reason, "Win reason should be cleared on reset")
         self.assertEqual(sum(state.starting_stacks_this_hand), 200, "Should reset to starting stacks (100 * 2)")

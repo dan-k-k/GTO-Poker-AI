@@ -48,7 +48,7 @@ class LivePlotter:
             fig, axes = plt.subplots(2, 2, figsize=(12, 10))
             (ax1, ax2), (ax3, ax4) = axes
             
-            # --- Plot 1: Preflop Strategy (VPIP / PFR) ---
+            # Plot 1: Preflop Strategy (VPIP / PFR)
             ax1.plot(plot_data.index, plot_data['vpip'], label='VPIP', color='blue', linewidth=1.5)
             ax1.axhline(0.90, color='blue', linestyle='--', alpha=0.3, label='Ref VPIP (~0.9)')
             ax1.plot(plot_data.index, plot_data['pfr'], label='PFR', color='orange', linewidth=1.5)
@@ -65,14 +65,14 @@ class LivePlotter:
             ax1.grid(True, alpha=0.2)
             # ax1.set_ylim(-0.05, 1.05)
 
-            # --- Plot 2: Reward ---
+            # Plot 2: Reward
             ax2.plot(plot_data.index, plot_data['reward'], color='green', linewidth=1)
             ax2.axhline(0, color='black', lw=1, linestyle='-')
             current_reward = rolling['reward'].iloc[-1] if not rolling.empty else 0
             ax2.set_title(f"P0 AS Avg Reward against P1 Any (Last: {current_reward:.2f})")
             ax2.grid(True, alpha=0.2)
 
-            # --- Plot 3: Aggression Frequency (AFq) ---
+            # Plot 3: Aggression Frequency (AFq)
             ax3.plot(plot_data.index, plot_data['afq'], color='red', linewidth=1.5)
             ax3.axhline(0.50, color='red', linestyle='--', alpha=0.3, label='Ref AFq (0.5)')
             ax3.set_title('P0 AS Aggression Freq')
@@ -80,7 +80,7 @@ class LivePlotter:
             ax3.grid(True, alpha=0.2)
             # ax3.set_ylim(0, 1.0)
 
-            # --- Plot 4: Entropy ---
+            # Plot 4: Entropy
             if 'entropy' in plot_data:
                 clean_entropy = plot_data['entropy'].fillna(0)
                 ax4.plot(plot_data.index, clean_entropy, color='purple', linewidth=1.5)
